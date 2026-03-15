@@ -20,16 +20,14 @@ from google import genai
 from google.genai import types
 from playwright.async_api import async_playwright
 
-from sources import SourceConfig
+from sources import SourceConfig, _search_url
 
 logger = logging.getLogger(__name__)
 
-# Computer Use requires gemini-2.5-flash-preview — this is the only model
-# with ENVIRONMENT_BROWSER support at time of writing.
 COMPUTER_USE_MODEL = "gemini-2.5-computer-use-preview-10-2025"
 
-# Hard cap on loop iterations to prevent runaway agents.
-MAX_ITERATIONS = 15
+# More iterations now that agents start on results pages (no search-box dance).
+MAX_ITERATIONS = 20
 
 # Viewport dimensions — keep consistent so coordinates are predictable.
 VIEWPORT_WIDTH = 1280
@@ -80,6 +78,11 @@ async def run_computer_use_agent(
 
     task = source.task_template.format(query=query)
 
+    # Build the search-results URL directly so the agent lands on results
+    # immediately — no iterations wasted finding and clicking a search box.
+    search_url = _search_url(source.start_url, query)
+    logger.info("Starting %s at: %s", source.id, search_url)
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page(
@@ -87,10 +90,10 @@ async def run_computer_use_agent(
         )
 
         try:
-            await page.goto(source.start_url, timeout=20000, wait_until="domcontentloaded")
+            await page.goto(search_url, timeout=25000, wait_until="domcontentloaded")
+            # Extra settle time — dynamic sites need JS to finish rendering results.
+            await asyncio.sleep(2)
         except Exception as e:
-            # Some sites load slowly; continue anyway — the agent will see
-            # whatever the page renders in the screenshot.
             logger.warning("Initial page load issue for %s: %s", source.id, e)
 
         # Initial screenshot to bootstrap the conversation.
