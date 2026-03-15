@@ -1,0 +1,40 @@
+steps:
+  # Step 1: Build the Docker image.
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - build
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/containers/textpot-backend
+      - .
+
+  # Step 2: Push image to Artifact Registry.
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - push
+      - us-central1-docker.pkg.dev/$PROJECT_ID/containers/textpot-backend
+
+  # Step 3: Deploy to Cloud Run.
+  # min-instances=1 is required — Cloud Run scales to zero by default but
+  # WebSocket connections need a persistent process. Scale-to-zero would
+  # terminate active connections.
+  # memory=2Gi is required — Playwright + Chromium is memory-heavy.
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - textpot-backend
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/containers/textpot-backend
+      - --region=us-central1
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --min-instances=1
+      - --memory=2Gi
+      - --set-env-vars=GEMINI_API_KEY=$_GEMINI_API_KEY
+
+substitutions:
+  _GEMINI_API_KEY: ""
+
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/containers/textpot-backend
