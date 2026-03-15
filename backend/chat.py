@@ -17,7 +17,7 @@ from google.genai import types
 logger = logging.getLogger(__name__)
 
 # Chat uses the lighter text model — no vision or browser control needed.
-CHAT_MODEL = "gemini-2.0-flash"
+CHAT_MODEL = "gemini-2.0-flash-lite"
 
 
 async def respond(

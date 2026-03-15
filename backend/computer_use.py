@@ -5,8 +5,8 @@ Loop structure: take screenshot → send to Gemini → receive function calls
 → execute each action on Playwright page → take new screenshot → send
 FunctionResponse back to Gemini → repeat until Gemini returns text (JSON result).
 
-Uses gemini-2.5-flash-preview because it is the model that supports the
-Computer Use tool with ENVIRONMENT_BROWSER capability.
+Uses gemini-2.5-computer-use-preview-10-2025 — the dedicated Computer Use
+model with ENVIRONMENT_BROWSER capability.
 """
 
 import asyncio
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Computer Use requires gemini-2.5-flash-preview — this is the only model
 # with ENVIRONMENT_BROWSER support at time of writing.
-COMPUTER_USE_MODEL = "gemini-2.5-flash-preview-05-20"
+COMPUTER_USE_MODEL = "gemini-2.5-computer-use-preview-10-2025"
 
 # Hard cap on loop iterations to prevent runaway agents.
 MAX_ITERATIONS = 15
