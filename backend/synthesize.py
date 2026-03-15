@@ -17,7 +17,7 @@ from google.genai import types
 logger = logging.getLogger(__name__)
 
 # Synthesis does not need Computer Use, so use the lighter text model.
-SYNTHESIS_MODEL = "gemini-2.0-flash-lite"
+SYNTHESIS_MODEL = "gemini-2.5-flash"
 
 
 def synthesize(query: str, results: dict[str, dict], api_key: str) -> str:
