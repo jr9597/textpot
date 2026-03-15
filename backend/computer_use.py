@@ -161,15 +161,22 @@ async def run_computer_use_agent(
                 new_screenshot = await page.screenshot(type="png")
                 await _send_screenshot(websocket, source.id, new_screenshot)
 
-                # Build one FunctionResponse per call, embedding the new
-                # screenshot so Gemini can see the result of its action.
+                # Build one FunctionResponse per call.
+                # safety_acknowledgement=True is required — the model flags
+                # certain actions (clicks, navigation) with a safety decision
+                # that must be explicitly acknowledged or the next API call
+                # returns 400 INVALID_ARGUMENT.
                 for fc in function_calls:
                     function_response_parts.append(
                         types.Part(
                             function_response=types.FunctionResponse(
                                 id=getattr(fc, "id", None),
                                 name=fc.name,
-                                response={"result": "success", "url": page.url},
+                                response={
+                                    "result": "success",
+                                    "url": page.url,
+                                    "safety_acknowledgement": True,
+                                },
                             )
                         )
                     )
@@ -192,38 +199,70 @@ async def run_computer_use_agent(
     await websocket.send_json({"type": "status", "source": source.id, "status": "done"})
 
 
+def _norm_x(x: float) -> int:
+    """Convert 0-1000 normalised x coordinate to pixels."""
+    return int(x / 1000 * VIEWPORT_WIDTH)
+
+
+def _norm_y(y: float) -> int:
+    """Convert 0-1000 normalised y coordinate to pixels."""
+    return int(y / 1000 * VIEWPORT_HEIGHT)
+
+
 async def _execute_action(page: Any, name: str, args: dict) -> str:
     """
     Execute a single Computer Use function call on the Playwright page.
 
-    Gemini emits predefined function call names for ENVIRONMENT_BROWSER.
-    Each function maps to the corresponding Playwright API.
+    The gemini-2.5-computer-use model emits these actual function names
+    (discovered from live logs — NOT the computer_use_* names in the docs):
+      open_web_browser, navigate, click_at, type_text_at,
+      key_combination, scroll, wait_5_seconds, screenshot, search
+
+    Coordinates are on a 0-1000 scale normalised to the viewport.
 
     Args:
         page: Active Playwright page.
-        name: Computer Use function name (e.g. "computer_use_click").
-        args: Function arguments dict from Gemini.
+        name: Function name emitted by Gemini.
+        args: Function arguments dict.
 
     Returns:
         "success" or an error description string.
     """
     try:
-        if name == "computer_use_click":
-            coord = args.get("coordinate", [640, 400])
-            x, y = coord[0], coord[1]
+        # ── Navigation ──────────────────────────────────────────────────
+        if name in ("open_web_browser", "navigate"):
+            url = args.get("url", "")
+            if url:
+                await page.goto(url, timeout=15000, wait_until="domcontentloaded")
+
+        # ── Click ────────────────────────────────────────────────────────
+        elif name == "click_at":
+            x = _norm_x(args.get("x", 500))
+            y = _norm_y(args.get("y", 500))
             await page.mouse.click(x, y)
 
-        elif name == "computer_use_type":
+        # ── Type (with optional click first) ────────────────────────────
+        elif name == "type_text_at":
+            x = args.get("x")
+            y = args.get("y")
+            if x is not None and y is not None:
+                await page.mouse.click(_norm_x(x), _norm_y(y))
             text = args.get("text", "")
             await page.keyboard.type(text)
+            if args.get("press_enter_after", False):
+                await page.keyboard.press("Enter")
 
-        elif name == "computer_use_key":
+        # ── Key combination (e.g. "Return", "ctrl+a") ───────────────────
+        elif name == "key_combination":
             key = args.get("key", "")
-            await page.keyboard.press(key)
+            if key:
+                await page.keyboard.press(key)
 
-        elif name == "computer_use_scroll":
-            coord = args.get("coordinate", [640, 400])
-            await page.mouse.move(coord[0], coord[1])
+        # ── Scroll ───────────────────────────────────────────────────────
+        elif name == "scroll":
+            x = _norm_x(args.get("x", 500))
+            y = _norm_y(args.get("y", 400))
+            await page.mouse.move(x, y)
             direction = args.get("direction", "down")
             amount = int(args.get("amount", 3))
             delta_x, delta_y = 0, 0
@@ -237,13 +276,42 @@ async def _execute_action(page: Any, name: str, args: dict) -> str:
                 delta_x = -amount * 120
             await page.mouse.wheel(delta_x, delta_y)
 
-        elif name == "computer_use_screenshot":
-            # No-op — a screenshot is always taken after every action set.
+        # ── High-level search shortcut ───────────────────────────────────
+        # Some iterations Gemini emits a "search" action. Best effort: focus
+        # the first input on the page, clear it, type the query and submit.
+        elif name == "search":
+            query = args.get("query", args.get("text", ""))
+            if query:
+                try:
+                    await page.focus("input[type=search], input[type=text], input:not([type])")
+                    await page.keyboard.press("Control+a")
+                    await page.keyboard.type(query)
+                    await page.keyboard.press("Enter")
+                except Exception:
+                    pass
+
+        # ── Wait ─────────────────────────────────────────────────────────
+        elif name == "wait_5_seconds":
+            await asyncio.sleep(3)  # cap at 3s to keep things moving
+
+        # ── Screenshot — no-op, taken automatically after each turn ─────
+        elif name in ("screenshot", "computer_use_screenshot"):
             pass
 
+        # ── Legacy predefined names (kept for safety) ────────────────────
+        elif name == "computer_use_click":
+            coord = args.get("coordinate", [500, 400])
+            await page.mouse.click(_norm_x(coord[0]), _norm_y(coord[1]))
+
+        elif name == "computer_use_type":
+            await page.keyboard.type(args.get("text", ""))
+
+        elif name == "computer_use_key":
+            await page.keyboard.press(args.get("key", ""))
+
         else:
-            logger.warning("Unknown Computer Use function: %s", name)
-            return f"unknown function: {name}"
+            logger.warning("Unhandled Computer Use function: %s args=%s", name, args)
+            return f"unhandled: {name}"
 
         return "success"
 
