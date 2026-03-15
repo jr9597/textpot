@@ -10,6 +10,8 @@ class SourceConfig:
     language: str
     start_url: str          # search-results URL template — {query} is URL-encoded query
     task_template: str
+    locale: str = "en-US"           # Playwright context locale
+    accept_language: str = "en-US,en;q=0.9"  # HTTP Accept-Language header
 
 
 # Shared task template. The agent lands directly on a results page
@@ -99,6 +101,8 @@ SOURCES: dict[str, SourceConfig] = {
         task_template=_TASK_TEMPLATE
             .replace("{language}", "Korean")
             .replace("{platform_type}", "Naver blog/post"),
+        locale="ko-KR",
+        accept_language="ko-KR,ko;q=0.9,en;q=0.8",
     ),
     "yahoo_japan": SourceConfig(
         id="yahoo_japan",
@@ -110,17 +114,21 @@ SOURCES: dict[str, SourceConfig] = {
         task_template=_TASK_TEMPLATE
             .replace("{language}", "Japanese")
             .replace("{platform_type}", "Yahoo Japan news"),
+        locale="ja-JP",
+        accept_language="ja-JP,ja;q=0.9,en;q=0.8",
     ),
     "baidu": SourceConfig(
         id="baidu",
         name="Baidu",
         flag="🇨🇳",
         language="Chinese",
-        # Baidu Tieba — China's largest forum network, great for raw opinions
-        start_url="https://tieba.baidu.com/f/search/res?qw={query}",
+        # Baidu web search — regular results page, less CAPTCHA-prone than Tieba
+        start_url="https://www.baidu.com/s?wd={query}&rn=10",
         task_template=_TASK_TEMPLATE
             .replace("{language}", "Chinese")
-            .replace("{platform_type}", "Baidu Tieba forum"),
+            .replace("{platform_type}", "Baidu web search"),
+        locale="zh-CN",
+        accept_language="zh-CN,zh;q=0.9,en;q=0.8",
     ),
     "dcard": SourceConfig(
         id="dcard",
@@ -132,6 +140,8 @@ SOURCES: dict[str, SourceConfig] = {
         task_template=_TASK_TEMPLATE
             .replace("{language}", "Traditional Chinese")
             .replace("{platform_type}", "Dcard forum"),
+        locale="zh-TW",
+        accept_language="zh-TW,zh;q=0.9,en;q=0.8",
     ),
     "seznam": SourceConfig(
         id="seznam",
@@ -143,5 +153,33 @@ SOURCES: dict[str, SourceConfig] = {
         task_template=_TASK_TEMPLATE
             .replace("{language}", "Czech")
             .replace("{platform_type}", "Seznam search"),
+        locale="cs-CZ",
+        accept_language="cs-CZ,cs;q=0.9,en;q=0.8",
+    ),
+    "reddit": SourceConfig(
+        id="reddit",
+        name="Reddit",
+        flag="🟠",
+        language="English",
+        # Reddit search sorted by top — surfaces high-engagement discussions
+        start_url="https://www.reddit.com/search/?q={query}&sort=top&t=year",
+        task_template=_TASK_TEMPLATE
+            .replace("{language}", "English")
+            .replace("{platform_type}", "Reddit discussion"),
+        locale="en-US",
+        accept_language="en-US,en;q=0.9",
+    ),
+    "threads": SourceConfig(
+        id="threads",
+        name="Threads",
+        flag="🧵",
+        language="English",
+        # Threads.net public search — Meta's social platform, opinion-heavy posts
+        start_url="https://www.threads.net/search?q={query}&serp_type=default",
+        task_template=_TASK_TEMPLATE
+            .replace("{language}", "English")
+            .replace("{platform_type}", "Threads social"),
+        locale="en-US",
+        accept_language="en-US,en;q=0.9",
     ),
 }

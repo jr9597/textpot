@@ -8,6 +8,8 @@ const SOURCE_META: Record<string, { label: string; flag: string }> = {
   baidu: { label: "Baidu", flag: "🇨🇳" },
   dcard: { label: "Dcard", flag: "🇹🇼" },
   seznam: { label: "Seznam", flag: "🇨🇿" },
+  reddit: { label: "Reddit", flag: "🟠" },
+  threads: { label: "Threads", flag: "🧵" },
 };
 
 interface Props {

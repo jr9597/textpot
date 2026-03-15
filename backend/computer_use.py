@@ -40,6 +40,9 @@ VIEWPORT_HEIGHT = 800
 # Number of results the agent should click into for accurate URLs.
 CLICK_THROUGH_COUNT = 3
 
+# If the agent is stuck on the same URL for this many iterations (e.g. CAPTCHA), give up.
+MAX_STUCK_ITERATIONS = 5
+
 
 async def run_computer_use_agent(
     source: SourceConfig,
@@ -86,10 +89,32 @@ async def run_computer_use_agent(
     logger.info("Starting %s at: %s", source.id, search_url)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page(
-            viewport={"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT}
+        # Launch with anti-detection flags to reduce CAPTCHA triggers.
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+            ],
         )
+        context = await browser.new_context(
+            viewport={"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT},
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            locale=source.locale,
+            extra_http_headers={
+                "Accept-Language": source.accept_language,
+            },
+        )
+        # Remove the webdriver property to avoid bot detection.
+        await context.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
+        page = await context.new_page()
 
         try:
             await page.goto(search_url, timeout=25000, wait_until="domcontentloaded")
@@ -102,9 +127,10 @@ async def run_computer_use_agent(
         # We capture them in order and inject into the final results JSON.
         result_urls: list[str] = []
         last_url = page.url
+        stuck_count = 0  # iterations on the same URL (CAPTCHA detector)
 
-        screenshot_bytes = await page.screenshot(type="png")
-        await _send_screenshot(websocket, source.id, screenshot_bytes)
+        screenshot_bytes = await _take_screenshot(page)
+        await _safe_send_screenshot(websocket, source.id, screenshot_bytes)
 
         contents: list[types.Content] = [
             types.Content(
@@ -120,6 +146,14 @@ async def run_computer_use_agent(
 
         try:
             for iteration in range(MAX_ITERATIONS):
+                # CAPTCHA / stuck detection: if we haven't moved in too long, give up.
+                if stuck_count >= MAX_STUCK_ITERATIONS:
+                    logger.warning(
+                        "%s stuck on same URL for %d iterations — possible CAPTCHA, aborting",
+                        source.id, stuck_count,
+                    )
+                    break
+
                 try:
                     response = client.models.generate_content(
                         model=COMPUTER_USE_MODEL,
@@ -130,7 +164,16 @@ async def run_computer_use_agent(
                     logger.error("Gemini API error on %s iteration %d: %s", source.id, iteration, e)
                     break
 
+                # Guard against None candidates (can happen on safety blocks or quota).
+                if not response or not response.candidates:
+                    logger.warning("%s: empty candidates on iteration %d", source.id, iteration)
+                    break
+
                 candidate = response.candidates[0]
+                if not candidate.content or not candidate.content.parts:
+                    logger.warning("%s: empty content/parts on iteration %d", source.id, iteration)
+                    break
+
                 contents.append(candidate.content)
 
                 function_calls = [
@@ -163,10 +206,17 @@ async def run_computer_use_agent(
                     ):
                         result_urls.append(current_url)
                         logger.info("%s captured result URL %d: %s", source.id, len(result_urls), current_url)
-                    last_url = current_url
 
-                new_screenshot = await page.screenshot(type="png")
-                await _send_screenshot(websocket, source.id, new_screenshot)
+                # Track stuck state.
+                current_url = page.url
+                if current_url == last_url:
+                    stuck_count += 1
+                else:
+                    stuck_count = 0
+                last_url = current_url
+
+                new_screenshot = await _take_screenshot(page)
+                await _safe_send_screenshot(websocket, source.id, new_screenshot)
 
                 function_response_parts: list[types.Part] = []
                 for fc in function_calls:
@@ -217,7 +267,7 @@ async def run_computer_use_agent(
                 "name": source.name,
             })
 
-    await websocket.send_json({"type": "status", "source": source.id, "status": "done"})
+    await _safe_send_json(websocket, {"type": "status", "source": source.id, "status": "done"})
 
 
 def _norm_x(x: float) -> int:
@@ -234,7 +284,8 @@ async def _execute_action(page: Any, name: str, args: dict) -> str:
 
     The gemini-2.5-computer-use model emits these function names:
       open_web_browser, navigate, click_at, type_text_at,
-      key_combination, scroll, wait_5_seconds, screenshot, search
+      key_combination, scroll, scroll_document, go_back,
+      drag_and_drop, wait_5_seconds, screenshot, search
     """
     try:
         if name in ("open_web_browser", "navigate"):
@@ -284,6 +335,39 @@ async def _execute_action(page: Any, name: str, args: dict) -> str:
                 delta_x = -amount * 120
             await page.mouse.wheel(delta_x, delta_y)
 
+        elif name == "scroll_document":
+            # Scroll the entire document — same as scroll but defaults to page center.
+            direction = args.get("direction", "down")
+            amount = int(args.get("amount", 3))
+            delta_y = amount * 120 if direction == "down" else -amount * 120
+            await page.mouse.wheel(0, delta_y)
+
+        elif name == "go_back":
+            try:
+                await page.go_back(timeout=10000, wait_until="domcontentloaded")
+            except Exception:
+                pass
+
+        elif name == "drag_and_drop":
+            # Used by the model for slider CAPTCHAs — simulate smooth human drag.
+            start_x = _norm_x(args.get("start_x", args.get("x", 200)))
+            start_y = _norm_y(args.get("start_y", args.get("y", 500)))
+            end_x = _norm_x(args.get("end_x", args.get("target_x", start_x + 260)))
+            end_y = _norm_y(args.get("end_y", args.get("target_y", start_y)))
+            await page.mouse.move(start_x, start_y)
+            await asyncio.sleep(0.1)
+            await page.mouse.down()
+            await asyncio.sleep(0.1)
+            # Gradually move to simulate a human drag.
+            steps = 30
+            for i in range(1, steps + 1):
+                ix = start_x + (end_x - start_x) * i // steps
+                iy = start_y + (end_y - start_y) * i // steps
+                await page.mouse.move(ix, iy)
+                await asyncio.sleep(0.02)
+            await asyncio.sleep(0.1)
+            await page.mouse.up()
+
         elif name == "search":
             query = args.get("query", args.get("text", ""))
             if query:
@@ -322,9 +406,42 @@ async def _execute_action(page: Any, name: str, args: dict) -> str:
         return f"error: {e}"
 
 
-async def _send_screenshot(websocket: Any, source_id: str, screenshot_bytes: bytes) -> None:
+async def _take_screenshot(page: Any) -> bytes:
+    """Take a screenshot with a timeout fallback."""
+    try:
+        return await asyncio.wait_for(page.screenshot(type="png"), timeout=20)
+    except asyncio.TimeoutError:
+        logger.warning("Screenshot timed out — returning empty 1x1 PNG")
+        # 1×1 transparent PNG as fallback so the loop can continue.
+        import struct, zlib
+        def _png_1x1():
+            sig = b'\x89PNG\r\n\x1a\n'
+            def chunk(t, d): crc = zlib.crc32(t + d) & 0xffffffff; return struct.pack('>I', len(d)) + t + d + struct.pack('>I', crc)
+            ihdr = chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0))
+            idat = chunk(b'IDAT', zlib.compress(b'\x00\x00\x00\x00'))
+            iend = chunk(b'IEND', b'')
+            return sig + ihdr + idat + iend
+        return _png_1x1()
+    except Exception as e:
+        logger.error("Screenshot failed: %s", e)
+        return b''
+
+
+async def _safe_send_json(websocket: Any, data: dict) -> bool:
+    """Send JSON to the WebSocket, silently ignoring disconnect errors."""
+    try:
+        await websocket.send_json(data)
+        return True
+    except Exception as e:
+        logger.warning("WebSocket send failed (client may have disconnected): %s", e)
+        return False
+
+
+async def _safe_send_screenshot(websocket: Any, source_id: str, screenshot_bytes: bytes) -> None:
+    if not screenshot_bytes:
+        return
     b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
-    await websocket.send_json({
+    await _safe_send_json(websocket, {
         "type": "screenshot",
         "source": source_id,
         "image": b64,
