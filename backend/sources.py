@@ -24,9 +24,10 @@ You are already on a {platform_type} results page showing results for a query in
 Do NOT search again or navigate away — you are already on the right page.
 
 Your task:
-1. Read the visible results
-2. Scroll down 2-3 times to see more results
-3. Extract the 5 best results — prioritise posts with opinions, reactions, and discussions over plain news headlines
+1. Read the visible results on this page
+2. Click into the first 3 results one by one — read each full page, then press the back button to return to results
+3. Scroll down to see more results and extract 2 more from the snippets
+4. Total: 5 results — prioritise posts with opinions, reactions, and discussions over plain news
 
 For EACH result, extract:
 - title: Translated to English

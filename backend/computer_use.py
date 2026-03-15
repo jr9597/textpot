@@ -2,8 +2,14 @@
 Core Computer Use agentic loop.
 
 Loop structure: take screenshot → send to Gemini → receive function calls
-→ execute each action on Playwright page → take new screenshot → send
-FunctionResponse back to Gemini → repeat until Gemini returns text (JSON result).
+→ execute each action on Playwright page → track URL changes → take new
+screenshot → send FunctionResponse back to Gemini → repeat until Gemini
+returns text (JSON result).
+
+URL capture strategy: Playwright tracks page.url after every action.
+When the URL changes away from the search results page the agent has
+clicked into a result — we record that URL. After the loop we inject
+the captured URLs into the top results so links are 100% accurate.
 
 Uses gemini-2.5-computer-use-preview-10-2025 — the dedicated Computer Use
 model with ENVIRONMENT_BROWSER capability.
@@ -26,12 +32,13 @@ logger = logging.getLogger(__name__)
 
 COMPUTER_USE_MODEL = "gemini-2.5-computer-use-preview-10-2025"
 
-# More iterations now that agents start on results pages (no search-box dance).
-MAX_ITERATIONS = 20
+MAX_ITERATIONS = 25  # extra headroom for click-through navigation
 
-# Viewport dimensions — keep consistent so coordinates are predictable.
 VIEWPORT_WIDTH = 1280
 VIEWPORT_HEIGHT = 800
+
+# Number of results the agent should click into for accurate URLs.
+CLICK_THROUGH_COUNT = 3
 
 
 async def run_computer_use_agent(
@@ -44,21 +51,20 @@ async def run_computer_use_agent(
     """
     Run a single Computer Use agent for one research source.
 
-    Spawns a headless Chromium browser, navigates the source site, and lets
-    Gemini autonomously browse and extract results via screenshot-based vision.
-    Streams screenshots to the frontend in real time.
+    The agent lands directly on the search results page, clicks into the top
+    3 results to capture their URLs via Playwright's page.url, then reads
+    each page for richer content before returning to extract remaining results
+    from snippets.
 
     Args:
         source: Source configuration (name, URL, task template).
-        query: User research query.
+        query: Translated query in the source's language.
         websocket: FastAPI WebSocket to stream messages to the frontend.
         results_callback: Async callable invoked when the agent produces results.
         api_key: Google AI Studio API key.
     """
     client = genai.Client(api_key=api_key)
 
-    # Computer Use tool — ENVIRONMENT_BROWSER tells Gemini it is controlling
-    # a web browser and should emit browser-appropriate actions.
     tool = types.Tool(
         computer_use=types.ComputerUse(
             environment=types.Environment.ENVIRONMENT_BROWSER,
@@ -69,17 +75,13 @@ async def run_computer_use_agent(
         tools=[tool],
         system_instruction=(
             "You are a multilingual research agent that autonomously browses websites "
-            "and extracts structured research data. Navigate the site, search for the "
-            "requested topic, scroll through results, and when you have enough "
-            "information return ONLY a valid JSON object as specified. "
-            "Do not include any explanation or markdown — just raw JSON."
+            "and extracts structured research data. Click into individual results to "
+            "read their full content, then return to the results page. "
+            "When done, return ONLY a valid JSON object as specified — no markdown, no explanation."
         ),
     )
 
     task = source.task_template.format(query=query)
-
-    # Build the search-results URL directly so the agent lands on results
-    # immediately — no iterations wasted finding and clicking a search box.
     search_url = _search_url(source.start_url, query)
     logger.info("Starting %s at: %s", source.id, search_url)
 
@@ -91,16 +93,19 @@ async def run_computer_use_agent(
 
         try:
             await page.goto(search_url, timeout=25000, wait_until="domcontentloaded")
-            # Extra settle time — dynamic sites need JS to finish rendering results.
             await asyncio.sleep(2)
         except Exception as e:
             logger.warning("Initial page load issue for %s: %s", source.id, e)
 
-        # Initial screenshot to bootstrap the conversation.
+        # Track every URL the agent navigates to that is NOT the search
+        # results page. Each one is a result page the agent clicked into.
+        # We capture them in order and inject into the final results JSON.
+        result_urls: list[str] = []
+        last_url = page.url
+
         screenshot_bytes = await page.screenshot(type="png")
         await _send_screenshot(websocket, source.id, screenshot_bytes)
 
-        # Build the initial conversation: task prompt + screenshot.
         contents: list[types.Content] = [
             types.Content(
                 role="user",
@@ -110,6 +115,8 @@ async def run_computer_use_agent(
                 ],
             )
         ]
+
+        data = None
 
         try:
             for iteration in range(MAX_ITERATIONS):
@@ -126,7 +133,6 @@ async def run_computer_use_agent(
                 candidate = response.candidates[0]
                 contents.append(candidate.content)
 
-                # Collect all function calls from this response turn.
                 function_calls = [
                     part.function_call
                     for part in candidate.content.parts
@@ -134,41 +140,35 @@ async def run_computer_use_agent(
                 ]
 
                 if not function_calls:
-                    # No function calls means Gemini is done browsing.
-                    # Extract the JSON result from the text response.
                     text = _extract_text(candidate.content.parts)
                     data = _parse_json(text)
-
-                    if data:
-                        await results_callback({
-                            "type": "results",
-                            "source": source.id,
-                            "data": data,
-                            "flag": source.flag,
-                            "language": source.language,
-                            "name": source.name,
-                        })
-                    else:
-                        logger.warning("Could not parse JSON from %s response: %s", source.id, text[:500])
+                    if not data:
+                        logger.warning("Could not parse JSON from %s: %s", source.id, text[:500])
                     break
 
-                # Execute every function call Gemini requested, then send
-                # the results (with a fresh screenshot) back as FunctionResponses.
-                function_response_parts: list[types.Part] = []
-
+                # Execute actions and track URL changes after each one.
                 for fc in function_calls:
-                    result = await _execute_action(page, fc.name, fc.args or {})
-                    # Brief pause so the page can react to the action.
+                    await _execute_action(page, fc.name, fc.args or {})
                     await asyncio.sleep(1)
+
+                    # If the page navigated away from the search results URL,
+                    # record it — this is a result page the agent clicked into.
+                    current_url = page.url
+                    if (
+                        current_url != last_url
+                        and current_url != search_url
+                        and not current_url.startswith(search_url)
+                        and current_url not in result_urls
+                        and len(result_urls) < CLICK_THROUGH_COUNT
+                    ):
+                        result_urls.append(current_url)
+                        logger.info("%s captured result URL %d: %s", source.id, len(result_urls), current_url)
+                    last_url = current_url
 
                 new_screenshot = await page.screenshot(type="png")
                 await _send_screenshot(websocket, source.id, new_screenshot)
 
-                # Build one FunctionResponse per call.
-                # safety_acknowledgement=True is required — the model flags
-                # certain actions (clicks, navigation) with a safety decision
-                # that must be explicitly acknowledged or the next API call
-                # returns 400 INVALID_ARGUMENT.
+                function_response_parts: list[types.Part] = []
                 for fc in function_calls:
                     function_response_parts.append(
                         types.Part(
@@ -184,8 +184,6 @@ async def run_computer_use_agent(
                         )
                     )
 
-                # Append the screenshot as a separate part in the same user turn
-                # so Gemini can see the current page state after all actions.
                 function_response_parts.append(
                     types.Part.from_bytes(data=new_screenshot, mime_type="image/png")
                 )
@@ -199,16 +197,34 @@ async def run_computer_use_agent(
         finally:
             await browser.close()
 
+        # Inject captured URLs into the top results.
+        # The agent clicked results in order, so result_urls[0] belongs to
+        # results[0], result_urls[1] to results[1], etc.
+        if data and result_urls:
+            results_list = data.get("results", [])
+            for i, url in enumerate(result_urls):
+                if i < len(results_list):
+                    results_list[i]["url"] = url
+            logger.info("%s injected %d URLs into results", source.id, len(result_urls))
+
+        if data:
+            await results_callback({
+                "type": "results",
+                "source": source.id,
+                "data": data,
+                "flag": source.flag,
+                "language": source.language,
+                "name": source.name,
+            })
+
     await websocket.send_json({"type": "status", "source": source.id, "status": "done"})
 
 
 def _norm_x(x: float) -> int:
-    """Convert 0-1000 normalised x coordinate to pixels."""
     return int(x / 1000 * VIEWPORT_WIDTH)
 
 
 def _norm_y(y: float) -> int:
-    """Convert 0-1000 normalised y coordinate to pixels."""
     return int(y / 1000 * VIEWPORT_HEIGHT)
 
 
@@ -216,35 +232,26 @@ async def _execute_action(page: Any, name: str, args: dict) -> str:
     """
     Execute a single Computer Use function call on the Playwright page.
 
-    The gemini-2.5-computer-use model emits these actual function names
-    (discovered from live logs — NOT the computer_use_* names in the docs):
+    The gemini-2.5-computer-use model emits these function names:
       open_web_browser, navigate, click_at, type_text_at,
       key_combination, scroll, wait_5_seconds, screenshot, search
-
-    Coordinates are on a 0-1000 scale normalised to the viewport.
-
-    Args:
-        page: Active Playwright page.
-        name: Function name emitted by Gemini.
-        args: Function arguments dict.
-
-    Returns:
-        "success" or an error description string.
     """
     try:
-        # ── Navigation ──────────────────────────────────────────────────
         if name in ("open_web_browser", "navigate"):
             url = args.get("url", "")
             if url:
                 await page.goto(url, timeout=15000, wait_until="domcontentloaded")
 
-        # ── Click ────────────────────────────────────────────────────────
         elif name == "click_at":
             x = _norm_x(args.get("x", 500))
             y = _norm_y(args.get("y", 500))
             await page.mouse.click(x, y)
+            # Wait for potential navigation after click.
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=5000)
+            except Exception:
+                pass
 
-        # ── Type (with optional click first) ────────────────────────────
         elif name == "type_text_at":
             x = args.get("x")
             y = args.get("y")
@@ -255,13 +262,11 @@ async def _execute_action(page: Any, name: str, args: dict) -> str:
             if args.get("press_enter_after", False):
                 await page.keyboard.press("Enter")
 
-        # ── Key combination (e.g. "Return", "ctrl+a") ───────────────────
         elif name == "key_combination":
             key = args.get("key", "")
             if key:
                 await page.keyboard.press(key)
 
-        # ── Scroll ───────────────────────────────────────────────────────
         elif name == "scroll":
             x = _norm_x(args.get("x", 500))
             y = _norm_y(args.get("y", 400))
@@ -279,9 +284,6 @@ async def _execute_action(page: Any, name: str, args: dict) -> str:
                 delta_x = -amount * 120
             await page.mouse.wheel(delta_x, delta_y)
 
-        # ── High-level search shortcut ───────────────────────────────────
-        # Some iterations Gemini emits a "search" action. Best effort: focus
-        # the first input on the page, clear it, type the query and submit.
         elif name == "search":
             query = args.get("query", args.get("text", ""))
             if query:
@@ -293,15 +295,12 @@ async def _execute_action(page: Any, name: str, args: dict) -> str:
                 except Exception:
                     pass
 
-        # ── Wait ─────────────────────────────────────────────────────────
         elif name == "wait_5_seconds":
-            await asyncio.sleep(3)  # cap at 3s to keep things moving
+            await asyncio.sleep(3)
 
-        # ── Screenshot — no-op, taken automatically after each turn ─────
         elif name in ("screenshot", "computer_use_screenshot"):
             pass
 
-        # ── Legacy predefined names (kept for safety) ────────────────────
         elif name == "computer_use_click":
             coord = args.get("coordinate", [500, 400])
             await page.mouse.click(_norm_x(coord[0]), _norm_y(coord[1]))
@@ -324,7 +323,6 @@ async def _execute_action(page: Any, name: str, args: dict) -> str:
 
 
 async def _send_screenshot(websocket: Any, source_id: str, screenshot_bytes: bytes) -> None:
-    """Encode screenshot as base64 and stream it to the frontend."""
     b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
     await websocket.send_json({
         "type": "screenshot",
@@ -334,31 +332,22 @@ async def _send_screenshot(websocket: Any, source_id: str, screenshot_bytes: byt
 
 
 def _extract_text(parts: list) -> str:
-    """Concatenate all text parts from a Gemini response."""
     return "\n".join(
         part.text for part in parts if getattr(part, "text", None)
     )
 
 
 def _parse_json(text: str) -> dict | None:
-    """
-    Extract and parse the first JSON object from Gemini's response text.
-
-    Gemini sometimes wraps JSON in markdown code blocks; strip those first.
-    """
     if not text:
         return None
 
-    # Strip markdown code fences if present.
     text = re.sub(r"```(?:json)?\s*", "", text).strip()
 
-    # Try direct parse first.
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # Fall back to finding the first {...} block in the text.
     match = re.search(r"\{[\s\S]*\}", text)
     if match:
         try:
