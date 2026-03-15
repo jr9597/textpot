@@ -6,7 +6,8 @@ const SOURCE_META: Record<string, { label: string; flag: string }> = {
   naver: { label: "Naver", flag: "🇰🇷" },
   yahoo_japan: { label: "Yahoo Japan", flag: "🇯🇵" },
   baidu: { label: "Baidu", flag: "🇨🇳" },
-  weibo: { label: "Weibo", flag: "🇨🇳" },
+  dcard: { label: "Dcard", flag: "🇹🇼" },
+  seznam: { label: "Seznam", flag: "🇨🇿" },
 };
 
 interface Props {

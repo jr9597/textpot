@@ -18,7 +18,7 @@ import ChatPanel from "@/components/ChatPanel";
 
 type SearchStatus = "idle" | "searching" | "complete";
 
-const ALL_SOURCES = ["naver", "yahoo_japan", "baidu", "weibo"];
+const ALL_SOURCES = ["naver", "yahoo_japan", "baidu", "dcard", "seznam"];
 
 export default function Home() {
   const [searchStatus, setSearchStatus] = useState<SearchStatus>("idle");

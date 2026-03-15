@@ -8,54 +8,59 @@ class SourceConfig:
     name: str
     flag: str
     language: str
-    start_url: str          # search-results URL template with {query} placeholder
+    start_url: str          # search-results URL template — {query} is URL-encoded query
     task_template: str
 
 
-# Task template for agents that land directly on a search-results page.
-# No navigation or search-box interaction needed — the agent only scrolls,
-# reads, and extracts. This eliminates the biggest source of wasted iterations.
+# Shared task template. The agent lands directly on a results page
+# (no search-box navigation needed) and scrolls to extract results.
 #
-# "Retrieve as you go" instruction: the agent is told to output a partial
-# JSON result after every ~2 pages of scrolling rather than waiting until
-# the very end. The backend parses and forwards each partial result as it
-# arrives so the frontend can populate columns progressively.
+# Key instructions:
+# - Look for visible URLs/hrefs in result snippets, breadcrumbs, and link text
+# - Extract discussions and opinion content, not just news headlines
+# - Minimum viable: 3 results if 5 aren't available
 _TASK_TEMPLATE = """
-You are already on a search results page showing results for "{query}" in {language}.
-Do NOT navigate away or search again — you are already in the right place.
+You are already on a {platform_type} results page showing results for a query in {language}.
+Do NOT search again or navigate away — you are already on the right page.
 
-Your job:
-1. Read the visible results on this page
-2. Scroll down 2-3 times to load more results
-3. Extract the 5 most relevant, interesting results you find
+Your task:
+1. Read the visible results
+2. Scroll down 2-3 times to see more results
+3. Extract the 5 best results — prioritise posts with opinions, reactions, and discussions over plain news headlines
 
-For EACH result extract:
-- title: translated to English
-- summary: 1-2 sentence summary translated to English describing what the post/article says
-- url: the direct link to the result (look for href values, post permalinks, or article URLs)
-- image_url: thumbnail/hero image URL if visible, otherwise null
+For EACH result, extract:
+- title: Translated to English
+- summary: 2-3 sentence English summary of what this post/article actually says or argues
+- url: The direct link. Look carefully — URLs often appear as:
+    * Visible text below titles (e.g. "search.naver.com/...")
+    * Breadcrumb paths
+    * Small grey text under the title
+    * The link text itself if it contains a domain
+  If you can identify a partial URL or domain + path, construct the full URL.
+  If genuinely not visible, use null.
+- image_url: Hero image or thumbnail URL if visible, else null
 - sentiment: "positive", "neutral", or "negative" toward the topic
 
-Content type classification — look at what you actually see:
-- "news_articles": headline-driven articles with bylines and dates
-- "blog_posts": personal posts, opinion pieces, social media posts
-- "forum_comments": threaded replies, comment sections, discussion boards
+Content type — classify what you actually see:
+- "news_articles": news headlines with publication names and dates
+- "blog_posts": personal opinions, social posts, reviews
+- "forum_comments": threaded replies, comment sections, Q&A threads
 
-If content_type is "forum_comments", also provide:
-- overall_sentiment breakdown as percentages (must sum to 100)
-- 3 representative_quotes translated to English
+If content_type is "forum_comments":
+- Provide overall_sentiment as percentages summing to 100
+- Provide 3 representative_quotes translated to English
 
-For news_articles and blog_posts, estimate overall_sentiment from the tone of all results combined.
+For news_articles and blog_posts, estimate overall_sentiment from the tone of the results combined.
 
-When done scrolling and reading, output ONLY this JSON and nothing else:
+Output ONLY this JSON — no markdown fences, no explanation:
 
 {{
   "content_type": "news_articles",
   "results": [
     {{
       "title": "English title",
-      "summary": "English summary of what this result says about the topic",
-      "url": "https://full-url-to-result",
+      "summary": "English summary describing what this post/article says about the topic",
+      "url": "https://full-url-or-null",
       "image_url": null,
       "sentiment": "positive"
     }}
@@ -71,8 +76,8 @@ When done scrolling and reading, output ONLY this JSON and nothing else:
 Rules:
 - Replace "news_articles" with the actual content_type you observed
 - Sentiment percentages must sum to 100
-- Output ONLY the raw JSON — no markdown, no explanation, no code fences
-- If you cannot find 5 results, output what you found (minimum 1)
+- Output minimum 1 result even if you can only find one
+- Raw JSON only — no markdown, no text before or after
 """
 
 
@@ -87,35 +92,55 @@ SOURCES: dict[str, SourceConfig] = {
         name="Naver",
         flag="🇰🇷",
         language="Korean",
-        # Naver integrated search — shows news, blog, café results together
-        start_url="https://search.naver.com/search.naver?query={query}&where=nexearch",
-        task_template=_TASK_TEMPLATE.replace("{language}", "Korean"),
+        # Naver blog search — surfaces opinion posts and community content,
+        # which gives richer sentiment signals than the default news tab
+        start_url="https://search.naver.com/search.naver?query={query}&where=post",
+        task_template=_TASK_TEMPLATE
+            .replace("{language}", "Korean")
+            .replace("{platform_type}", "Naver blog/post"),
     ),
     "yahoo_japan": SourceConfig(
         id="yahoo_japan",
         name="Yahoo Japan",
         flag="🇯🇵",
         language="Japanese",
-        # Yahoo Japan web search
-        start_url="https://search.yahoo.co.jp/search?p={query}",
-        task_template=_TASK_TEMPLATE.replace("{language}", "Japanese"),
+        # Yahoo Japan news search — well-structured results with visible URLs
+        start_url="https://news.yahoo.co.jp/search?p={query}",
+        task_template=_TASK_TEMPLATE
+            .replace("{language}", "Japanese")
+            .replace("{platform_type}", "Yahoo Japan news"),
     ),
     "baidu": SourceConfig(
         id="baidu",
         name="Baidu",
         flag="🇨🇳",
         language="Chinese",
-        # Baidu web search — lands directly on results
-        start_url="https://www.baidu.com/s?wd={query}",
-        task_template=_TASK_TEMPLATE.replace("{language}", "Chinese"),
+        # Baidu Tieba — China's largest forum network, great for raw opinions
+        start_url="https://tieba.baidu.com/f/search/res?qw={query}",
+        task_template=_TASK_TEMPLATE
+            .replace("{language}", "Chinese")
+            .replace("{platform_type}", "Baidu Tieba forum"),
     ),
-    "weibo": SourceConfig(
-        id="weibo",
-        name="Weibo",
-        flag="🇨🇳",
-        language="Chinese",
-        # Weibo search — shows public posts about the topic
-        start_url="https://s.weibo.com/weibo?q={query}&Refer=index",
-        task_template=_TASK_TEMPLATE.replace("{language}", "Chinese"),
+    "dcard": SourceConfig(
+        id="dcard",
+        name="Dcard",
+        flag="🇹🇼",
+        language="Traditional Chinese",
+        # Dcard — Taiwan's largest student/young adult forum, rich discussion content
+        start_url="https://www.dcard.tw/search?query={query}",
+        task_template=_TASK_TEMPLATE
+            .replace("{language}", "Traditional Chinese")
+            .replace("{platform_type}", "Dcard forum"),
+    ),
+    "seznam": SourceConfig(
+        id="seznam",
+        name="Seznam",
+        flag="🇨🇿",
+        language="Czech",
+        # Seznam — Czech Republic's dominant search engine and news portal
+        start_url="https://search.seznam.cz/?q={query}",
+        task_template=_TASK_TEMPLATE
+            .replace("{language}", "Czech")
+            .replace("{platform_type}", "Seznam search"),
     ),
 }

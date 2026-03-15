@@ -15,6 +15,7 @@ from typing import Any
 from computer_use import run_computer_use_agent
 from sources import SOURCES, SourceConfig
 from synthesize import synthesize
+from translate import translate_query
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,17 @@ async def run(query: str, source_ids: list[str], websocket: Any) -> None:
             "status": "loading",
         })
 
+    # Translate the query into each unique language in parallel before
+    # launching agents. This ensures search URLs use native-language terms
+    # (e.g. "テスラ" on Yahoo Japan, "테슬라" on Naver) rather than English.
+    unique_languages = {s.language for s in selected_sources}
+    translations = await asyncio.gather(*[
+        translate_query(query, lang, api_key)
+        for lang in unique_languages
+    ])
+    translated: dict[str, str] = dict(zip(unique_languages, translations))
+    logger.info("Translations: %s", translated)
+
     # Collect results as agents complete — keyed by source_id.
     collected_results: dict[str, dict] = {}
 
@@ -69,7 +81,7 @@ async def run(query: str, source_ids: list[str], websocket: Any) -> None:
     tasks = [
         run_computer_use_agent(
             source=source,
-            query=query,
+            query=translated.get(source.language, query),
             websocket=websocket,
             results_callback=handle_result,
             api_key=api_key,
