@@ -13,11 +13,13 @@ steps:
       - push
       - us-central1-docker.pkg.dev/$PROJECT_ID/containers/textpot-backend
 
-  # Step 3: Deploy to Cloud Run.
+  # Step 3: Deploy to Cloud Run, injecting the API key from Secret Manager.
   # min-instances=1 is required — Cloud Run scales to zero by default but
   # WebSocket connections need a persistent process. Scale-to-zero would
   # terminate active connections.
   # memory=2Gi is required — Playwright + Chromium is memory-heavy.
+  # --set-secrets pulls GEMINI_API_KEY from Secret Manager so the key is
+  # never stored in source code, build logs, or environment substitutions.
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: gcloud
     args:
@@ -31,10 +33,7 @@ steps:
       - --port=8080
       - --min-instances=1
       - --memory=2Gi
-      - --set-env-vars=GEMINI_API_KEY=$_GEMINI_API_KEY
-
-substitutions:
-  _GEMINI_API_KEY: ""
+      - --set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest
 
 images:
   - us-central1-docker.pkg.dev/$PROJECT_ID/containers/textpot-backend
