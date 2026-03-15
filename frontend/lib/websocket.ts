@@ -18,9 +18,14 @@ export function createSession(onMessage: (msg: WSMessage) => void): WSSession {
   }
 
   const ws = new WebSocket(url);
+  const queue: object[] = [];
 
   ws.onopen = () => {
     console.log("[ws] connected");
+    // Flush any messages that were sent before the connection opened.
+    while (queue.length > 0) {
+      ws.send(JSON.stringify(queue.shift()));
+    }
   };
 
   ws.onmessage = (event) => {
@@ -45,7 +50,8 @@ export function createSession(onMessage: (msg: WSMessage) => void): WSSession {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(message));
       } else {
-        console.warn("[ws] tried to send while not open", message);
+        // Connection still opening — queue the message for onopen to flush.
+        queue.push(message);
       }
     },
     close: () => {
