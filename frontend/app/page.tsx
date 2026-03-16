@@ -96,21 +96,6 @@ export default function Home() {
           Social media sentiment intelligence.
         </p>
 
-        <p
-          style={{
-            fontFamily: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
-            fontSize: "clamp(13px, 1.6vw, 16px)",
-            color: "#ababab",
-            marginBottom: "52px",
-            letterSpacing: "-0.01em",
-            maxWidth: "480px",
-          }}
-        >
-          Comment sections are where the real customer data lives.
-          <br />
-          You can now read them all at once.
-        </p>
-
         {/* Coming soon pill */}
         <div
           style={{
@@ -127,7 +112,7 @@ export default function Home() {
             color: "#6b6b6b",
             boxShadow: "0 2px 16px rgba(0,0,0,0.06)",
             letterSpacing: "-0.01em",
-            marginBottom: "80px",
+            marginBottom: "24px",
           }}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -139,6 +124,21 @@ export default function Home() {
           </svg>
           Chrome extension — coming soon
         </div>
+
+        <p
+          style={{
+            fontFamily: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+            fontSize: "clamp(13px, 1.6vw, 16px)",
+            color: "#ababab",
+            marginBottom: "52px",
+            letterSpacing: "-0.01em",
+            maxWidth: "480px",
+          }}
+        >
+          Comment sections are where the real customer data lives.
+          <br />
+          You can now read them all at once.
+        </p>
 
         {/* Demo video */}
         <div
