@@ -24,6 +24,8 @@ No scraping APIs. No third-party platform keys. Gemini sees the actual screen an
 
 ## Architecture
 
+![Architecture](textpot_architecture%20diagram.png)
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                          Chrome Extension (MV3)                          │
