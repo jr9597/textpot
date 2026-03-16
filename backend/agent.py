@@ -73,7 +73,10 @@ async def run(query: str, source_ids: list[str], websocket: Any) -> None:
         if msg.get("type") == "results":
             collected_results[msg["source"]] = msg["data"]
         # Forward all messages (results, screenshots, status) to the frontend.
-        await websocket.send_json(msg)
+        try:
+            await websocket.send_json(msg)
+        except Exception as e:
+            logger.warning("WebSocket send failed in handle_result: %s", e)
 
     # Run all Computer Use agents in parallel. return_exceptions=True ensures
     # a single agent failure does not cancel the others — each source is
@@ -95,11 +98,14 @@ async def run(query: str, source_ids: list[str], websocket: Any) -> None:
     for source, outcome in zip(selected_sources, outcomes):
         if isinstance(outcome, Exception):
             logger.error("Source %s failed with: %s", source.id, outcome)
-            await websocket.send_json({
-                "type": "status",
-                "source": source.id,
-                "status": "error",
-            })
+            try:
+                await websocket.send_json({
+                    "type": "status",
+                    "source": source.id,
+                    "status": "error",
+                })
+            except Exception:
+                pass
         else:
             logger.info("Source %s completed successfully", source.id)
 
@@ -113,4 +119,7 @@ async def run(query: str, source_ids: list[str], websocket: Any) -> None:
     else:
         logger.warning("No results collected from any source — skipping synthesis")
 
-    await websocket.send_json({"type": "complete"})
+    try:
+        await websocket.send_json({"type": "complete"})
+    except Exception:
+        pass

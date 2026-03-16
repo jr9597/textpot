@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Textpot",
+  "version": "1.0",
+  "description": "Multilingual research across global platforms",
+  "permissions": ["tabs", "scripting", "storage", "debugger"],
+  "host_permissions": [
+    "https://search.naver.com/*",
+    "https://news.yahoo.co.jp/*",
+    "https://www.baidu.com/*",
+    "https://www.dcard.tw/*",
+    "https://search.seznam.cz/*",
+    "https://www.reddit.com/*",
+    "https://www.threads.net/*",
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://*.run.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}

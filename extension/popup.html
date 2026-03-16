@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Textpot</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f11;
+      color: #e2e8f0;
+      width: 220px;
+      padding: 20px 16px;
+    }
+    .logo {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 4px;
+    }
+    .logo span { color: #f97316; }
+    .tagline {
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 9px 12px;
+      background: #f97316;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #ea6c00; }
+  </style>
+</head>
+<body>
+  <div class="logo">Text<span>pot</span></div>
+  <div class="tagline">Search the world, not just your corner of it.</div>
+  <button id="openBtn">Open Textpot</button>
+  <script src="popup.js"></script>
+</body>
+</html>

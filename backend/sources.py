@@ -182,4 +182,17 @@ SOURCES: dict[str, SourceConfig] = {
         locale="en-US",
         accept_language="en-US,en;q=0.9",
     ),
+    "x": SourceConfig(
+        id="x",
+        name="X (Twitter)",
+        flag="𝕏",
+        language="English",
+        # X.com top search — surfaces high-engagement tweets and replies
+        start_url="https://x.com/search?q={query}&src=typed_query&f=top",
+        task_template=_TASK_TEMPLATE
+            .replace("{language}", "English")
+            .replace("{platform_type}", "X (Twitter)"),
+        locale="en-US",
+        accept_language="en-US,en;q=0.9",
+    ),
 }
