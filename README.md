@@ -1,8 +1,8 @@
 # Textpot
 
-**Social media sentiment intelligence — across every market, every language.**
+**Social media sentiment intelligence — see what the world actually thinks.**
 
-Textpot is a Chrome extension powered by Gemini Computer Use that autonomously browses 11 global platforms in parallel — Reddit, TikTok, X, Threads, Naver, Baidu, and more — extracting authentic public sentiment and synthesizing it into a cross-cultural intelligence dashboard.
+Textpot is a Chrome extension powered by Gemini Computer Use that autonomously browses 6 major social platforms in parallel — Reddit, TikTok, X, Threads, YouTube, and Instagram — extracting authentic public sentiment and synthesizing it into an intelligence dashboard.
 
 > Built for the Google Cloud × Gemini Hackathon
 
@@ -10,15 +10,15 @@ Textpot is a Chrome extension powered by Gemini Computer Use that autonomously b
 
 ## What It Does
 
-Type a query. Select your sources. Textpot opens real browser sessions, navigates each platform natively in the user's own Chrome, reads comments and discussions, and returns:
+Type a query. Select your sources. Textpot opens real browser sessions **in the user's own Chrome** — with their existing logins and cookies — navigates each platform natively, reads comments and discussions, and returns:
 
 - **Per-platform sentiment breakdown** — positive / neutral / negative %
-- **Representative quotes** from real users, translated to English
-- **AI synthesis** — cross-cultural patterns and key takeaways
-- **Divergence detection** — flags when markets significantly disagree
+- **Representative quotes** from real users
+- **AI synthesis** — patterns and key takeaways across platforms
+- **Divergence detection** — flags when platforms significantly disagree
 - **Follow-up chat** grounded in the collected results
 
-No scraping APIs. No third-party data. Gemini sees the screen and acts like a human.
+No scraping APIs. No third-party platform keys. Gemini sees the actual screen and acts like a human user.
 
 ---
 
@@ -88,27 +88,72 @@ No scraping APIs. No third-party data. Gemini sees the screen and acts like a hu
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
+### How the Browser Control Works
+
+The key architectural distinction: **the browser runs in the user's real Chrome, not on a server.**
+
+```
+Chrome Extension (background.js)          Cloud Run (main.py)
+─────────────────────────────────         ──────────────────────────────
+chrome.windows.create({type:"popup"})
+  → opens real Chrome window
+chrome.debugger.attach(tabId)
+  → connects Chrome DevTools Protocol
+Page.setWebLifecycleState("active")
+  → prevents background tab throttling
+
+Loop (up to 30 turns):
+  Page.captureScreenshot()
+    → raw screenshot from live tab    ──▶  POST /computer-use-step
+                                            Gemini Computer Use sees screenshot
+                                            returns: { name: "click_at",
+                                                       args: { x: 512, y: 340 } }
+  execute action via CDP:            ◀──  { actions: [...], done: false }
+    Input.dispatchMouseEvent(x, y)
+    Input.insertText("query")
+    Input.dispatchKeyEvent("Return")
+    Page.navigate(url)
+    ...
+
+  when done=true:
+    parse JSON result from Gemini
+    chrome.runtime.sendMessage(RESULT)
+    chrome.debugger.detach()
+```
+
+This means Textpot runs inside the user's authenticated browser session — no login flows, no bot detection, no headless fingerprinting. It uses whatever cookies and sessions the user already has.
+
+### Agentic Loop
+
+The Computer Use loop is a hand-rolled ReAct agent (Reason + Act):
+
+```
+Observe  →  Page.captureScreenshot() sends live browser state to Gemini
+Reason   →  Gemini interprets the screenshot: where am I? what do I see?
+                                               what should I do next?
+Act      →  Gemini emits a FunctionCall (click, type, scroll, go_back...)
+             Extension executes it via Chrome DevTools Protocol
+Loop     →  Repeat until Gemini returns structured JSON result (done=true)
+```
+
+Each source runs its own independent agentic loop. All loops run concurrently — up to 6 parallel agents, one per platform.
+
 ### Request Flow
 
 ```
 User types query
       │
       ▼
-background.js translates into N languages in parallel
+background.js launches 6 parallel Computer Use agents
       │
-      ├──▶ 🇰🇷 Naver        Korean query
-      ├──▶ 🇯🇵 Yahoo Japan  Japanese query       Each source:
-      ├──▶ 🇨🇳 Baidu        Chinese query    →   1. Popup window (avoids tab throttling)
-      ├──▶ 🇹🇼 Dcard        Chinese query        2. Attach Chrome Debugger (CDP)
-      ├──▶ 🇨🇿 Seznam       Czech query          3. Navigate to results URL
-      ├──▶    Reddit        English query        4. Loop: screenshot → Gemini → action
-      ├──▶    Threads       English query        5. Extract structured JSON result
-      ├──▶    X (Twitter)   English query
-      ├──▶    YouTube       English query
-      ├──▶    Instagram     English query
-      └──▶    TikTok        English query
+      ├──▶  Reddit      →  popup window + CDP + Gemini loop
+      ├──▶  Threads     →  popup window + CDP + Gemini loop
+      ├──▶  X           →  popup window + CDP + Gemini loop
+      ├──▶  YouTube     →  popup window + CDP + Gemini loop
+      ├──▶  Instagram   →  popup window + CDP + Gemini loop
+      └──▶  TikTok      →  popup window + CDP + Gemini loop
                  │
-                 ▼  (each source streams results as it completes)
+                 ▼  (each source streams result as it completes)
       chrome.runtime.sendMessage → dashboard updates live
                  │
                  ▼  (after all sources finish)
@@ -124,8 +169,8 @@ background.js translates into N languages in parallel
 
 | Challenge | Solution |
 |---|---|
-| Platforms block headless browsers | Run in the **user's real Chrome** via `chrome.debugger` — full auth sessions, real fingerprint, no bot detection |
-| Background tabs freeze → stale screenshots | `chrome.windows.create({type:"popup"})` + `Page.setWebLifecycleState({state:"active"})` via CDP |
+| Social platforms block headless/server browsers | Run in the **user's real Chrome** via `chrome.debugger` (CDP) — existing auth sessions, real fingerprint, indistinguishable from human browsing |
+| Background tabs freeze → stale screenshots | `chrome.windows.create({type:"popup"})` + `Page.setWebLifecycleState({state:"active"})` via CDP keeps tabs rendering |
 | Gemini SDK types can't be JSON-serialized across HTTP | Server-side `_cu_sessions{}` stores live `Content` + `FunctionCall` objects in memory |
 | Multilingual search accuracy | Query translated to native language before URL construction; per-source locale + Accept-Language headers |
 | Login walls, modals, CAPTCHAs | Task prompt instructs Gemini to dismiss overlays; drag-and-drop support for slider CAPTCHAs |
@@ -137,19 +182,14 @@ background.js translates into N languages in parallel
 
 ## Supported Sources
 
-| # | Platform | Region | Language | Content Type |
-|---|---|---|---|---|
-| 1 | 🇰🇷 Naver | Korea | Korean | Blog posts, opinions |
-| 2 | 🇯🇵 Yahoo Japan | Japan | Japanese | News, mainstream coverage |
-| 3 | 🇨🇳 Baidu | China | Simplified Chinese | Web search |
-| 4 | 🇹🇼 Dcard | Taiwan | Traditional Chinese | Forum discussions |
-| 5 | 🇨🇿 Seznam | Czech Republic | Czech | Local search |
-| 6 | Reddit | Global | English | High-engagement discussions |
-| 7 | Threads | Global | English | Social posts |
-| 8 | X (Twitter) | Global | English | Tweets + replies |
-| 9 | YouTube | Global | English | Video comments |
-| 10 | Instagram | Global | English | Visual posts |
-| 11 | TikTok | Global | English | Short-form video comments |
+| # | Platform | Content |
+|---|---|---|
+| 1 | Reddit | High-engagement discussions, comment threads |
+| 2 | Threads | Social posts and replies |
+| 3 | X (Twitter) | Tweets and quote tweets |
+| 4 | YouTube | Video comments |
+| 5 | Instagram | Post captions and comments |
+| 6 | TikTok | Short-form video comments |
 
 ---
 

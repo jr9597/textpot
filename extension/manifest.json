@@ -5,11 +5,6 @@
   "description": "Multilingual research across global platforms",
   "permissions": ["tabs", "scripting", "storage", "debugger"],
   "host_permissions": [
-    "https://search.naver.com/*",
-    "https://news.yahoo.co.jp/*",
-    "https://www.baidu.com/*",
-    "https://www.dcard.tw/*",
-    "https://search.seznam.cz/*",
     "https://www.reddit.com/*",
     "https://www.threads.net/*",
     "https://x.com/*",

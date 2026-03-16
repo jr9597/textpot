@@ -15,41 +15,6 @@
 const BACKEND_URL = "https://textpot-backend-537575138673.us-central1.run.app";
 
 const SOURCES = {
-  naver: {
-    id: "naver",
-    name: "Naver",
-    flag: "🇰🇷",
-    language: "Korean",
-    url: (q) => `https://search.naver.com/search.naver?query=${encodeURIComponent(q)}&where=post`,
-  },
-  yahoo_japan: {
-    id: "yahoo_japan",
-    name: "Yahoo Japan",
-    flag: "🇯🇵",
-    language: "Japanese",
-    url: (q) => `https://news.yahoo.co.jp/search?p=${encodeURIComponent(q)}`,
-  },
-  baidu: {
-    id: "baidu",
-    name: "Baidu",
-    flag: "🇨🇳",
-    language: "Chinese",
-    url: (q) => `https://www.baidu.com/s?wd=${encodeURIComponent(q)}&rn=10`,
-  },
-  dcard: {
-    id: "dcard",
-    name: "Dcard",
-    flag: "🇹🇼",
-    language: "Traditional Chinese",
-    url: (q) => `https://www.dcard.tw/search?query=${encodeURIComponent(q)}`,
-  },
-  seznam: {
-    id: "seznam",
-    name: "Seznam",
-    flag: "🇨🇿",
-    language: "Czech",
-    url: (q) => `https://search.seznam.cz/?q=${encodeURIComponent(q)}`,
-  },
   reddit: {
     id: "reddit",
     name: "Reddit",
