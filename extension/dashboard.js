@@ -11,16 +11,25 @@
 const BACKEND_URL = "https://textpot-backend-537575138673.us-central1.run.app";
 
 // Source metadata for rendering (flag, name, language)
+const _img = (file) => `<img src="${chrome.runtime.getURL(`icons/${file}`)}" width="18" height="18" style="border-radius:3px;object-fit:contain">`;
+
 const SOURCES = {
   naver:      { id: "naver",      name: "Naver",       flag: "🇰🇷", language: "Korean" },
   yahoo_japan:{ id: "yahoo_japan",name: "Yahoo Japan",  flag: "🇯🇵", language: "Japanese" },
   baidu:      { id: "baidu",      name: "Baidu",        flag: "🇨🇳", language: "Chinese" },
   dcard:      { id: "dcard",      name: "Dcard",        flag: "🇹🇼", language: "Traditional Chinese" },
   seznam:     { id: "seznam",     name: "Seznam",       flag: "🇨🇿", language: "Czech" },
-  reddit:     { id: "reddit",     name: "Reddit",       flag: "🟠", language: "English" },
-  threads:    { id: "threads",    name: "Threads",      flag: "🧵", language: "English" },
-  x:          { id: "x",         name: "X (Twitter)",  flag: "𝕏", language: "English" },
+  reddit:     { id: "reddit",     name: "Reddit",       flag: _img("reddit.png"),  language: "English" },
+  threads:    { id: "threads",    name: "Threads",      flag: _img("threads.png"), language: "English" },
+  x:          { id: "x",         name: "X (Twitter)",  flag: "𝕏",                language: "English" },
+  youtube:    { id: "youtube",    name: "YouTube",      flag: _img("youtube.png"), language: "English" },
+  instagram:  { id: "instagram",  name: "Instagram",    flag: "📸",                language: "English" },
 };
+
+const SOURCE_GROUPS = [
+  { label: "Local Search", ids: ["naver", "yahoo_japan", "baidu", "dcard", "seznam"] },
+  { label: "Social Media", ids: ["reddit", "threads", "x", "youtube", "instagram"] },
+];
 
 // App state
 let selectedSources = new Set(["reddit", "naver"]);
@@ -53,17 +62,25 @@ function init() {
 
 function renderPills() {
   sourcePills.innerHTML = "";
-  for (const [id, src] of Object.entries(SOURCES)) {
-    const pill = document.createElement("div");
-    pill.className = "pill" + (selectedSources.has(id) ? " active" : "");
-    pill.dataset.sourceId = id;
-    pill.innerHTML = `
-      <span class="status-dot"></span>
-      <span>${src.flag}</span>
-      <span>${src.name}</span>
-    `;
-    pill.addEventListener("click", () => toggleSource(id, pill));
-    sourcePills.appendChild(pill);
+  for (const group of SOURCE_GROUPS) {
+    const row = document.createElement("div");
+    row.className = "pill-group";
+    row.innerHTML = `<span class="pill-group-label">${group.label}</span>`;
+    for (const id of group.ids) {
+      const src = SOURCES[id];
+      if (!src) continue;
+      const pill = document.createElement("div");
+      pill.className = "pill" + (selectedSources.has(id) ? " active" : "");
+      pill.dataset.sourceId = id;
+      pill.innerHTML = `
+        <span class="status-dot"></span>
+        <span>${src.flag}</span>
+        <span>${src.name}</span>
+      `;
+      pill.addEventListener("click", () => toggleSource(id, pill));
+      row.appendChild(pill);
+    }
+    sourcePills.appendChild(row);
   }
 }
 

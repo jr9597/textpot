@@ -53,14 +53,14 @@ const SOURCES = {
   reddit: {
     id: "reddit",
     name: "Reddit",
-    flag: "🟠",
+    flag: `<img src="${chrome.runtime.getURL("icons/reddit.png")}" width="18" height="18" style="border-radius:3px;object-fit:contain">`,
     language: "English",
     url: (q) => `https://www.reddit.com/search/?q=${encodeURIComponent(q)}&sort=top&t=year`,
   },
   threads: {
     id: "threads",
     name: "Threads",
-    flag: "🧵",
+    flag: `<img src="${chrome.runtime.getURL("icons/threads.png")}" width="18" height="18" style="border-radius:3px;object-fit:contain">`,
     language: "English",
     url: (q) => `https://www.threads.net/search?q=${encodeURIComponent(q)}&serp_type=default`,
   },
@@ -70,6 +70,20 @@ const SOURCES = {
     flag: "𝕏",
     language: "English",
     url: (q) => `https://x.com/search?q=${encodeURIComponent(q)}&src=typed_query&f=top`,
+  },
+  youtube: {
+    id: "youtube",
+    name: "YouTube",
+    flag: `<img src="${chrome.runtime.getURL("icons/youtube.png")}" width="18" height="18" style="border-radius:3px;object-fit:contain">`,
+    language: "English",
+    url: (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`,
+  },
+  instagram: {
+    id: "instagram",
+    name: "Instagram",
+    flag: "📸",
+    language: "English",
+    url: (q) => `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(q)}`,
   },
 };
 
@@ -105,11 +119,14 @@ function openDashboard() {
 function buildTask(source, query) {
   return `You are already on a ${source.name} search results page showing results for "${query}" in ${source.language}. Do NOT search again — you are already on the correct page.
 
+IMPORTANT: If you see any modal dialog, login prompt, "Sign in to continue", "Open in app" banner, cookie consent, or any overlay — dismiss it immediately by clicking the close/X button or pressing Escape. Do NOT attempt to log in or sign up.
+
 Your task:
 1. Read the visible posts and results on this page.
 2. Click into the top 3 results one by one — read each page's content, user comments, and reactions, then press the back button to return to the results page.
-3. Scroll down on the results page to find 2 more results from snippets.
-4. Total: 5 results — prioritise posts with user opinions, reactions, and discussions over plain news.
+3. Total: 3 results — prioritise posts with user opinions, reactions, and discussions over plain news.
+
+IMPORTANT: Do NOT click any "Translate", "See translation", or language toggle buttons. You can read and understand any language directly — clicking translate wastes steps and causes unnecessary page changes.
 
 For EACH result extract:
 - title: translated to English
@@ -129,7 +146,8 @@ Return ONLY this JSON — no markdown fences, no explanation:
 }
 
 Replace content_type with "news_articles", "blog_posts", or "forum_comments" based on what you observe.
-Sentiment percentages must sum to 100. Return minimum 1 result even if content is sparse.`;
+Sentiment percentages must sum to 100. Return minimum 1 result even if content is sparse.
+If after several attempts you cannot get more content, return the JSON with whatever you have collected so far.`;
 }
 
 // ── Main search orchestration ─────────────────────────────────────────────
@@ -207,32 +225,50 @@ async function startSearch(query, sourceIds) {
 // ── Gemini Computer Use scraping loop ────────────────────────────────────
 
 async function scrapeWithComputerUse(sourceId, source, translatedQuery) {
-  const tab = await chrome.tabs.create({ url: source.url(translatedQuery), active: false });
-  await waitForTabLoad(tab.id);
+  // Open in a popup window instead of a background tab — popup windows are not
+  // subject to Chrome's background tab throttling/freezing, which would cause
+  // Page.captureScreenshot to return stale frames and Gemini to loop forever.
+  const win = await chrome.windows.create({
+    url: source.url(translatedQuery),
+    type: "popup",
+    width: VIEWPORT_WIDTH,
+    height: VIEWPORT_HEIGHT + 88, // +88 for OS window chrome
+    focused: false,
+  });
+  const tabId = win.tabs[0].id;
+  const winId = win.id;
+
+  await waitForTabLoad(tabId);
   await sleep(2500); // let SPA render
 
   try {
-    await chrome.debugger.attach({ tabId: tab.id }, "1.3");
+    await chrome.debugger.attach({ tabId }, "1.3");
   } catch (err) {
     console.warn(`[${sourceId}] Debugger attach failed:`, err);
-    await chrome.tabs.remove(tab.id);
+    try { await chrome.windows.remove(winId); } catch {}
     return null;
   }
 
   try {
-    // Pin viewport so Gemini's normalised 0-1000 coordinates map correctly
-    await chrome.debugger.sendCommand({ tabId: tab.id }, "Emulation.setDeviceMetricsOverride", {
+    // Pin viewport so Gemini's normalised 0-1000 coordinates map correctly.
+    await chrome.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", {
       width: VIEWPORT_WIDTH,
       height: VIEWPORT_HEIGHT,
       deviceScaleFactor: 1,
       mobile: false,
     });
+    // Prevent Chrome from freezing the page when the window is in the background.
+    // Without this, captureScreenshot returns stale frames when the user looks away.
+    await chrome.debugger.sendCommand({ tabId }, "Page.enable");
+    try {
+      await chrome.debugger.sendCommand({ tabId }, "Page.setWebLifecycleState", { state: "active" });
+    } catch {}  // not available in all Chrome versions — best-effort
     await sleep(300);
 
     const task = buildTask(source, translatedQuery);
 
     const { data: initialScreenshot } = await chrome.debugger.sendCommand(
-      { tabId: tab.id }, "Page.captureScreenshot", { format: "png" }
+      { tabId }, "Page.captureScreenshot", { format: "png" }
     );
 
     let sessionId = null;
@@ -240,7 +276,7 @@ async function scrapeWithComputerUse(sourceId, source, translatedQuery) {
     let actionResults = null;
     let resultJson = null;
 
-    for (let turn = 0; turn < 20; turn++) {
+    for (let turn = 0; turn < 30; turn++) {
       // First call: no session_id, send task + screenshot.
       // Subsequent calls: send session_id + action results + new screenshot.
       const body = sessionId === null
@@ -277,19 +313,19 @@ async function scrapeWithComputerUse(sourceId, source, translatedQuery) {
       actionResults = [];
       for (const action of actions) {
         try {
-          await executeDebuggerAction(tab.id, action);
+          await executeDebuggerAction(tabId, action);
         } catch (err) {
           console.warn(`[${sourceId}] Action ${action.name} failed:`, err);
         }
         await sleep(1000);
-        const url = await getTabUrl(tab.id);
+        const url = await getTabUrl(tabId);
         actionResults.push({ id: action.id, name: action.name, result: "success", url });
       }
 
       // Capture new screenshot for next turn
       try {
         const { data } = await chrome.debugger.sendCommand(
-          { tabId: tab.id }, "Page.captureScreenshot", { format: "png" }
+          { tabId }, "Page.captureScreenshot", { format: "png" }
         );
         currentScreenshot = data;
       } catch (err) {
@@ -303,8 +339,8 @@ async function scrapeWithComputerUse(sourceId, source, translatedQuery) {
     return { data: resultJson, flag: source.flag, language: source.language, name: source.name };
 
   } finally {
-    try { await chrome.debugger.detach({ tabId: tab.id }); } catch {}
-    try { await chrome.tabs.remove(tab.id); } catch {}
+    try { await chrome.debugger.detach({ tabId }); } catch {}
+    try { await chrome.windows.remove(winId); } catch {}
   }
 }
 

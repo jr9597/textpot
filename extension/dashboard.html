@@ -88,7 +88,17 @@
     .btn-search:disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* Source pills */
-    .source-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .source-pills { display: flex; flex-direction: column; gap: 8px; }
+    .pill-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .pill-group-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      width: 80px;
+      flex-shrink: 0;
+    }
     .pill {
       padding: 6px 14px;
       border-radius: 999px;
@@ -154,7 +164,9 @@
       gap: 8px;
       margin-bottom: 12px;
     }
-    .source-flag { font-size: 18px; }
+    .source-flag { font-size: 18px; display: flex; align-items: center; }
+    .source-flag img { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; }
+    .pill img { width: 15px; height: 15px; object-fit: contain; border-radius: 2px; vertical-align: middle; }
     .source-card-name { font-weight: 600; font-size: 14px; }
     .source-lang { font-size: 11px; color: var(--muted); }
 

@@ -195,4 +195,28 @@ SOURCES: dict[str, SourceConfig] = {
         locale="en-US",
         accept_language="en-US,en;q=0.9",
     ),
+    "youtube": SourceConfig(
+        id="youtube",
+        name="YouTube",
+        flag="▶️",
+        language="English",
+        start_url="https://www.youtube.com/results?search_query={query}",
+        task_template=_TASK_TEMPLATE
+            .replace("{language}", "English")
+            .replace("{platform_type}", "YouTube"),
+        locale="en-US",
+        accept_language="en-US,en;q=0.9",
+    ),
+    "instagram": SourceConfig(
+        id="instagram",
+        name="Instagram",
+        flag="📸",
+        language="English",
+        start_url="https://www.instagram.com/explore/search/keyword/?q={query}",
+        task_template=_TASK_TEMPLATE
+            .replace("{language}", "English")
+            .replace("{platform_type}", "Instagram"),
+        locale="en-US",
+        accept_language="en-US,en;q=0.9",
+    ),
 }
