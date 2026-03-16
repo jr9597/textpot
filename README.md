@@ -172,7 +172,6 @@ background.js launches 6 parallel Computer Use agents
 | Social platforms block headless/server browsers | Run in the **user's real Chrome** via `chrome.debugger` (CDP) — existing auth sessions, real fingerprint, indistinguishable from human browsing |
 | Background tabs freeze → stale screenshots | `chrome.windows.create({type:"popup"})` + `Page.setWebLifecycleState({state:"active"})` via CDP keeps tabs rendering |
 | Gemini SDK types can't be JSON-serialized across HTTP | Server-side `_cu_sessions{}` stores live `Content` + `FunctionCall` objects in memory |
-| Multilingual search accuracy | Query translated to native language before URL construction; per-source locale + Accept-Language headers |
 | Login walls, modals, CAPTCHAs | Task prompt instructs Gemini to dismiss overlays; drag-and-drop support for slider CAPTCHAs |
 | One source failure cascading | `asyncio.gather(return_exceptions=True)` — failures are isolated |
 | Screenshot timeouts hanging the loop | Fallback 1×1 PNG on timeout — loop continues gracefully |
@@ -224,12 +223,9 @@ textpot/
 │
 ├── backend/                    # FastAPI — Google Cloud Run
 │   ├── main.py                 # Endpoints + in-memory session store
-│   ├── agent.py                # Parallel agent orchestration
-│   ├── computer_use.py         # Playwright-based Computer Use loop
-│   ├── sources.py              # Source configs + shared task prompt
-│   ├── translate.py            # Parallel query translation
-│   ├── synthesize.py           # Cross-platform AI brief
-│   ├── chat.py                 # Grounded follow-up Q&A
+│   ├── translate.py            # Query translation (Gemini Flash)
+│   ├── synthesize.py           # Cross-platform AI brief (Gemini Flash)
+│   ├── chat.py                 # Grounded follow-up Q&A (Gemini Flash)
 │   └── requirements.txt
 │
 ├── frontend/                   # Landing page — Vercel
@@ -277,19 +273,38 @@ gcloud builds submit --config cloudbuild.yaml
 
 ---
 
-## Hackathon Notes
+## Hackathon Notes — UI Navigator Track
 
-| Requirement | Status |
+**Track:** UI Navigator — Visual UI Understanding & Interaction
+
+> *Build an agent that becomes the user's hands on screen. The agent observes the browser or device display, interprets visual elements with or without relying on APIs or DOM access, and performs actions based on user intent.*
+
+### Mandatory Requirements
+
+| Requirement | How Textpot satisfies it |
 |---|---|
-| `google-genai` Python SDK | ✅ |
-| Gemini Computer Use (`gemini-2.5-computer-use-preview-10-2025`) | ✅ |
-| Gemini multimodal — screenshots as input | ✅ |
-| Google Cloud service (Cloud Run) | ✅ |
-| Google Secret Manager | ✅ |
-| Google Artifact Registry + Cloud Build | ✅ |
-| Parallel multi-agent execution | ✅ (`asyncio.gather` across 11 sources) |
-| No hardcoded DOM selectors — pure vision | ✅ |
-| Runs in user's authenticated browser | ✅ (unique to this approach) |
+| **Gemini multimodal interprets screenshots** | Every Computer Use turn sends a live `Page.captureScreenshot()` to Gemini — the model sees the raw pixels and decides what to do next. Zero DOM access, zero selectors. |
+| **Outputs executable actions** | Gemini returns structured `FunctionCall` objects (`click_at`, `type_text`, `scroll`, `go_back`, `key_combo`) that the extension executes directly via Chrome DevTools Protocol. |
+| **Agents hosted on Google Cloud** | FastAPI backend runs on **Google Cloud Run** (min-instances=1, 2Gi memory). Image stored in **Google Artifact Registry**, deployed via **Google Cloud Build**. |
+
+### Why It Fits the Track
+
+| Criterion | Textpot |
+|---|---|
+| Universal web navigator | Navigates Reddit, TikTok, X, YouTube, Instagram, and Threads — platforms that block any API or headless approach — purely by reading the screen |
+| Visual understanding without DOM | Task prompts contain no CSS selectors, XPaths, or element IDs. Gemini identifies buttons, links, and comment sections visually, the same way a human would |
+| Cross-application automation | 6 parallel agents run simultaneously, each navigating a different platform with its own layout, language, and interaction pattern |
+| User intent → screen actions | User types a plain-language query → agents autonomously navigate, scroll, click into posts, read comments, and return synthesized intelligence |
+| Real authenticated browser | Runs in the user's own Chrome via `chrome.debugger` (CDP) — Gemini navigates the user's actual logged-in sessions, not a sandboxed headless instance |
+
+### Google Cloud Services Used
+
+| Service | Role |
+|---|---|
+| **Google Cloud Run** | Hosts the FastAPI backend; `min-instances=1` keeps the in-memory session store warm across multi-turn Computer Use loops |
+| **Google Secret Manager** | Stores `GEMINI_API_KEY` — never in code or build logs |
+| **Google Artifact Registry** | Stores the Docker image |
+| **Google Cloud Build** | CI/CD pipeline — build → push → deploy on every `gcloud builds submit` |
 
 ---
 

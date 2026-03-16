@@ -2,13 +2,10 @@
 FastAPI backend for the Textpot Chrome extension.
 
 Exposes REST endpoints called by the extension's background service worker:
-  POST /translate  — translate query into target language
-  POST /analyze    — structure raw DOM text into ResultData JSON via Gemini
-  POST /synthesize — cross-platform journalistic synthesis
-  POST /chat       — follow-up chat grounded in research results
-
-The backend is stateless — no database, no session storage.
-All context (results, conversation history) is passed by the caller.
+  POST /translate        — translate query into target language
+  POST /computer-use-step — one turn of the Gemini Computer Use loop
+  POST /synthesize       — cross-platform journalistic synthesis
+  POST /chat             — follow-up chat grounded in research results
 """
 
 import base64
@@ -29,7 +26,6 @@ from google.genai import types
 import chat
 import synthesize as synthesize_module
 import translate as translate_module
-from sources import SOURCES
 
 load_dotenv()
 
@@ -52,33 +48,9 @@ async def health():
     return {"status": "ok"}
 
 
-ANALYZE_MODEL = "gemini-2.5-flash"
-
-_RESULT_SHAPE = """{
-  "content_type": "news_articles",
-  "results": [
-    {
-      "title": "English title",
-      "summary": "2-3 sentence English summary",
-      "url": "https://full-url-or-null",
-      "image_url": null,
-      "sentiment": "positive"
-    }
-  ],
-  "overall_sentiment": {"positive": 60, "neutral": 25, "negative": 15},
-  "representative_quotes": []
-}"""
-
-
 class TranslateRequest(BaseModel):
     query: str
     language: str
-
-
-class AnalyzeRequest(BaseModel):
-    source_id: str
-    query: str
-    raw_text: str
 
 
 class SynthesizeRequest(BaseModel):
@@ -125,61 +97,6 @@ async def translate_endpoint(req: TranslateRequest):
     api_key = os.getenv("GEMINI_API_KEY", "")
     translated = await translate_module.translate_query(req.query, req.language, api_key)
     return {"translated": translated}
-
-
-@app.post("/analyze")
-async def analyze_endpoint(req: AnalyzeRequest):
-    api_key = os.getenv("GEMINI_API_KEY", "")
-    source = SOURCES.get(req.source_id)
-    source_name = source.name if source else req.source_id
-    flag = source.flag if source else ""
-    language = source.language if source else "English"
-
-    client = genai.Client(api_key=api_key)
-    prompt = (
-        f"You are analyzing user comments and reactions on {source_name} about the topic: '{req.query}'.\n\n"
-        f"Below is raw comment text extracted from {source_name} posts (first 8000 chars):\n{req.raw_text[:8000]}\n\n"
-        f"Return ONLY this JSON structure — no markdown fences, no explanation:\n{_RESULT_SHAPE}\n\n"
-        f"Rules:\n"
-        f"- content_type should be 'forum_comments' unless the content is clearly news articles\n"
-        f"- Each result in 'results' represents ONE POST and its comments. Use the [POST: ...] markers to identify posts.\n"
-        f"- title: the post title (translated to English)\n"
-        f"- url: extract from [URL: ...] markers if present, else null\n"
-        f"- summary: 2-3 sentence English summary of what commenters are saying about the topic for that post\n"
-        f"- sentiment: the dominant sentiment of the comments in that post (positive/neutral/negative)\n"
-        f"- overall_sentiment: aggregate sentiment percentages across ALL comments, must sum to 100\n"
-        f"- representative_quotes: 3 actual comment quotes translated to English that best capture the range of opinions\n"
-        f"- Output minimum 1 result even if content is sparse\n"
-        f"- Raw JSON only — no markdown, no text before or after"
-    )
-
-    try:
-        response = client.models.generate_content(
-            model=ANALYZE_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.2),
-        )
-        text = response.text.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1] if "\n" in text else text
-            text = text.rsplit("```", 1)[0].strip()
-        data = json.loads(text)
-    except Exception as e:
-        logger.error("Analyze failed for %s: %s", req.source_id, e)
-        data = {
-            "content_type": "news_articles",
-            "results": [],
-            "overall_sentiment": {"positive": 0, "neutral": 100, "negative": 0},
-            "representative_quotes": [],
-        }
-
-    return {
-        "source": req.source_id,
-        "data": data,
-        "flag": flag,
-        "language": language,
-        "name": source_name,
-    }
 
 
 @app.post("/synthesize")
