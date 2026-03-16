@@ -85,6 +85,13 @@ const SOURCES = {
     language: "English",
     url: (q) => `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(q)}`,
   },
+  tiktok: {
+    id: "tiktok",
+    name: "TikTok",
+    flag: `<img src="${chrome.runtime.getURL("icons/tiktok.png")}" width="18" height="18" style="border-radius:3px;object-fit:contain">`,
+    language: "English",
+    url: (q) => `https://www.tiktok.com/search?q=${encodeURIComponent(q)}&t=video`,
+  },
 };
 
 // Fixed viewport for Gemini Computer Use — coordinates are normalised 0-1000

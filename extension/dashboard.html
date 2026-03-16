@@ -4,107 +4,263 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Textpot</title>
+  <link rel="icon" href="icons/textpot.png" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0f0f11;
-      --surface: #17181c;
-      --border: #2a2b30;
-      --text: #e2e8f0;
-      --muted: #64748b;
-      --accent: #f97316;
-      --accent-hover: #ea6c00;
-      --green: #22c55e;
-      --red: #ef4444;
-      --yellow: #eab308;
-      --radius: 10px;
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --surface-2: #f7f7f7;
+      --border: #e3e3e3;
+      --border-focus: #999;
+      --text: #0f0f0f;
+      --text-secondary: #6b6b6b;
+      --muted: #b0b0b0;
+      --ink: #0f0f0f;
+      --ink-hover: #333;
+      --ink-subtle: rgba(15,15,15,0.06);
+      --green: #1a9e4a;
+      --red: #d93025;
+      --yellow: #c08a00;
+      --radius-sm: 8px;
+      --radius: 12px;
+      --radius-lg: 18px;
+      --radius-xl: 22px;
     }
 
     html, body {
       height: 100%;
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
       font-size: 14px;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* Layout */
-    .app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-
-    header {
-      padding: 16px 24px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-shrink: 0;
+    /* ── Flickering grid ────────────────────────────────────────────── */
+    #flickerBg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      display: block;
     }
-    .logo { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
-    .logo span { color: var(--accent); }
-    .tagline { font-size: 12px; color: var(--muted); }
 
-    main {
-      flex: 1;
-      overflow-y: auto;
-      padding: 24px;
+    /* ── App shell ──────────────────────────────────────────────────── */
+    .app {
+      position: relative;
+      z-index: 1;
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      height: 100vh;
+      overflow: hidden;
     }
 
-    /* Search bar */
-    .search-row {
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      padding: 14px 24px;
       display: flex;
+      align-items: center;
       gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .logo-name {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text);
+    }
+
+    .header-divider {
+      width: 1px;
+      height: 14px;
+      background: var(--border);
+    }
+
+    .tagline {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* ── Page body: hero + main stacked ────────────────────────────── */
+    .page-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ── Hero (prompt area) ─────────────────────────────────────────── */
+    .hero {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 24px 32px;
+      padding-top: calc(28vh - 80px);
+      transition: padding 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    .app.has-results .hero {
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
       align-items: stretch;
     }
-    .search-row input {
-      flex: 1;
-      padding: 11px 14px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text);
-      font-size: 14px;
-      outline: none;
-      transition: border-color 0.15s;
+
+    /* Header branding — hidden until search starts */
+    .header-branding {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
     }
-    .search-row input:focus { border-color: var(--accent); }
-    .search-row input::placeholder { color: var(--muted); }
+    .app.has-results .header-branding {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Hero branding — shown before search, fades out after */
+    .hero-branding {
+      text-align: center;
+      margin-bottom: 20px;
+      transition: opacity 0.2s ease, max-height 0.3s ease, margin 0.3s ease;
+      max-height: 140px;
+      overflow: hidden;
+    }
+    .hero-brand-name {
+      font-size: 42px;
+      font-weight: 700;
+      letter-spacing: -1.5px;
+      color: var(--text);
+      margin-bottom: 6px;
+      line-height: 1;
+    }
+    .hero-brand-tagline {
+      font-size: 15px;
+      color: var(--text-secondary);
+    }
+    .app.has-results .hero-branding {
+      opacity: 0;
+      max-height: 0;
+      margin-bottom: 0;
+      pointer-events: none;
+    }
+
+    /* ── Prompt box ─────────────────────────────────────────────────── */
+    .prompt-container {
+      width: 100%;
+      max-width: 680px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-xl);
+      box-shadow: 0 2px 20px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+      transition: max-width 0.35s cubic-bezier(0.4,0,0.2,1),
+                  border-radius 0.35s cubic-bezier(0.4,0,0.2,1),
+                  box-shadow 0.2s ease;
+      overflow: hidden;
+    }
+
+    .prompt-container:focus-within {
+      border-color: var(--border-focus);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.09), 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .app.has-results .prompt-container {
+      max-width: 100%;
+      border-radius: var(--radius-lg);
+      box-shadow: none;
+    }
+
+    #queryInput {
+      width: 100%;
+      padding: 16px 18px 10px;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 15px;
+      font-family: inherit;
+      outline: none;
+      resize: none;
+      line-height: 1.5;
+    }
+    #queryInput::placeholder { color: var(--muted); }
+
+    .prompt-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px 10px;
+    }
+
+    .btn-sources {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+    .btn-sources:hover { background: #efefef; color: var(--text); }
+    .btn-sources svg { flex-shrink: 0; transition: transform 0.2s; }
+    .btn-sources.open svg { transform: rotate(180deg); }
+
     .btn-search {
-      padding: 11px 20px;
-      background: var(--accent);
+      width: 34px;
+      height: 34px;
+      background: var(--ink);
       color: #fff;
       border: none;
-      border-radius: var(--radius);
-      font-size: 14px;
-      font-weight: 600;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       cursor: pointer;
-      transition: background 0.15s;
-      white-space: nowrap;
+      transition: background 0.15s, transform 0.1s;
+      flex-shrink: 0;
     }
-    .btn-search:hover:not(:disabled) { background: var(--accent-hover); }
-    .btn-search:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-search:hover:not(:disabled) { background: var(--ink-hover); transform: scale(1.06); }
+    .btn-search:active:not(:disabled) { transform: scale(0.97); }
+    .btn-search:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
 
-    /* Source pills */
-    .source-pills { display: flex; flex-direction: column; gap: 8px; }
-    .pill-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    /* ── Sources dropdown ───────────────────────────────────────────── */
+    .sources-dropdown {
+      border-top: 1px solid var(--border);
+      padding: 14px 16px;
+      background: var(--surface-2);
+    }
+
+    .source-pills { display: flex; flex-direction: column; gap: 10px; }
+    .pill-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
     .pill-group-label {
       font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       color: var(--muted);
-      width: 80px;
+      width: 72px;
       flex-shrink: 0;
     }
+
     .pill {
-      padding: 6px 14px;
+      padding: 5px 11px;
       border-radius: 999px;
       border: 1px solid var(--border);
       background: var(--surface);
-      color: var(--muted);
+      color: var(--text-secondary);
       font-size: 12px;
       font-weight: 500;
       cursor: pointer;
@@ -112,67 +268,100 @@
       transition: all 0.15s;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
     }
-    .pill:hover { border-color: var(--accent); color: var(--text); }
+    .pill:hover { border-color: #999; color: var(--text); }
     .pill.active {
-      background: var(--accent);
-      border-color: var(--accent);
+      background: var(--ink);
+      border-color: var(--ink);
       color: #fff;
     }
     .pill .status-dot {
-      width: 7px; height: 7px;
+      width: 5px; height: 5px;
       border-radius: 50%;
       background: currentColor;
       opacity: 0;
       transition: opacity 0.2s;
+      flex-shrink: 0;
     }
     .pill.loading .status-dot { opacity: 1; background: var(--yellow); animation: pulse 1s infinite; }
     .pill.done .status-dot { opacity: 1; background: var(--green); }
     .pill.error .status-dot { opacity: 1; background: var(--red); }
+    .pill img { width: 13px; height: 13px; object-fit: contain; border-radius: 2px; flex-shrink: 0; }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
+      50%       { opacity: 0.3; }
     }
 
-    /* Results grid */
+    /* ── Main results area ──────────────────────────────────────────── */
+    #main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    /* ── Section label ──────────────────────────────────────────────── */
     .section-label {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.08em;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--muted);
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
+    /* ── Results grid ───────────────────────────────────────────────── */
     .results-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
     }
 
     .source-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px;
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      transition: box-shadow 0.2s;
     }
+    .source-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.07); }
+
     .source-card-header {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       margin-bottom: 12px;
     }
-    .source-flag { font-size: 18px; display: flex; align-items: center; }
-    .source-flag img { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; }
-    .pill img { width: 15px; height: 15px; object-fit: contain; border-radius: 2px; vertical-align: middle; }
-    .source-card-name { font-weight: 600; font-size: 14px; }
-    .source-lang { font-size: 11px; color: var(--muted); }
 
+    .source-flag {
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      flex-shrink: 0;
+    }
+    .source-flag img {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+
+    .source-card-name { font-weight: 600; font-size: 13px; }
+    .source-lang { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
+
+    /* ── Sentiment bar ──────────────────────────────────────────────── */
     .sentiment-bar {
       display: flex;
-      height: 4px;
+      height: 3px;
       border-radius: 2px;
       overflow: hidden;
       margin-bottom: 12px;
@@ -182,239 +371,470 @@
     .sentiment-bar .neu { background: var(--muted); }
     .sentiment-bar .neg { background: var(--red); }
 
-    .result-items { display: flex; flex-direction: column; gap: 10px; }
+    /* ── Result items ───────────────────────────────────────────────── */
+    .result-items { display: flex; flex-direction: column; gap: 8px; }
+
     .result-item {
-      padding: 10px;
-      background: var(--bg);
-      border-radius: 7px;
+      padding: 10px 12px;
+      background: var(--surface-2);
+      border-radius: var(--radius-sm);
       border: 1px solid var(--border);
     }
+
     .result-item a {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       color: var(--text);
       text-decoration: none;
       display: block;
       margin-bottom: 4px;
-      line-height: 1.35;
+      line-height: 1.4;
     }
-    .result-item a:hover { color: var(--accent); }
+    .result-item a:hover { color: #444; text-decoration: underline; }
+
     .result-item .summary {
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.5;
+      font-size: 11px;
+      color: var(--text-secondary);
+      line-height: 1.55;
     }
+
     .result-item .sentiment-badge {
       display: inline-block;
       font-size: 10px;
       font-weight: 600;
-      padding: 2px 7px;
+      padding: 2px 6px;
       border-radius: 4px;
       margin-top: 6px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
-    .sentiment-badge.positive { background: rgba(34,197,94,0.15); color: var(--green); }
-    .sentiment-badge.neutral  { background: rgba(100,116,139,0.15); color: var(--muted); }
-    .sentiment-badge.negative { background: rgba(239,68,68,0.15); color: var(--red); }
+    .sentiment-badge.positive { background: rgba(26,158,74,0.1); color: var(--green); }
+    .sentiment-badge.neutral  { background: rgba(0,0,0,0.06); color: var(--text-secondary); }
+    .sentiment-badge.negative { background: rgba(217,48,37,0.1); color: var(--red); }
 
+    /* ── Quotes ─────────────────────────────────────────────────────── */
     .quotes-list { margin-top: 10px; }
     .quote-item {
-      font-size: 12px;
+      font-size: 11px;
       font-style: italic;
-      color: var(--muted);
+      color: var(--text-secondary);
       padding: 6px 10px;
-      border-left: 2px solid var(--border);
-      margin-bottom: 6px;
-      line-height: 1.4;
+      border-left: 2px solid #d0d0d0;
+      margin-bottom: 5px;
+      line-height: 1.45;
     }
 
-    .skeleton {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
+    /* ── Skeleton ───────────────────────────────────────────────────── */
+    .skeleton { display: flex; flex-direction: column; gap: 8px; }
     .skeleton-line {
-      height: 12px;
-      background: var(--border);
+      height: 10px;
+      background: #ebebeb;
       border-radius: 4px;
-      animation: shimmer 1.4s infinite;
+      animation: shimmer 1.6s infinite;
     }
-    .skeleton-line.short { width: 60%; }
+    .skeleton-line.short { width: 55%; }
     .skeleton-line.medium { width: 80%; }
 
     @keyframes shimmer {
       0%   { opacity: 1; }
-      50%  { opacity: 0.4; }
+      50%  { opacity: 0.45; }
       100% { opacity: 1; }
     }
 
-    /* Synthesis */
+    /* ── Synthesis ──────────────────────────────────────────────────── */
     .synthesis-box {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 18px 20px;
-      font-size: 14px;
-      line-height: 1.7;
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+      font-size: 13px;
+      line-height: 1.75;
       color: var(--text);
     }
     .synthesis-loading {
-      color: var(--muted);
+      color: var(--text-secondary);
       font-style: italic;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
+    .synthesis-loading::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      border: 1.5px solid #ddd;
+      border-top-color: #666;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Chat */
+    /* ── Chat ───────────────────────────────────────────────────────── */
     .chat-panel {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
+      border-radius: var(--radius-lg);
       display: flex;
       flex-direction: column;
-      gap: 0;
       overflow: hidden;
     }
+
     .chat-messages {
-      padding: 16px;
+      padding: 14px 16px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      max-height: 320px;
+      gap: 8px;
+      max-height: 280px;
       overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
     }
+
     .chat-msg {
-      padding: 10px 14px;
-      border-radius: 8px;
+      padding: 9px 13px;
+      border-radius: var(--radius);
       font-size: 13px;
-      line-height: 1.55;
-      max-width: 90%;
+      line-height: 1.6;
+      max-width: 88%;
     }
     .chat-msg.user {
-      background: var(--accent);
+      background: var(--ink);
       color: #fff;
       align-self: flex-end;
+      border-radius: var(--radius) 4px var(--radius) var(--radius);
     }
     .chat-msg.assistant {
-      background: var(--bg);
+      background: var(--surface-2);
       border: 1px solid var(--border);
       color: var(--text);
       align-self: flex-start;
+      border-radius: 4px var(--radius) var(--radius) var(--radius);
     }
     .chat-msg.thinking {
-      background: var(--bg);
-      border: 1px solid var(--border);
+      background: transparent;
       color: var(--muted);
       font-style: italic;
+      font-size: 12px;
       align-self: flex-start;
+      padding: 4px 0;
     }
+
     .chat-input-row {
       display: flex;
       gap: 8px;
-      padding: 12px 16px;
+      padding: 10px 14px;
       border-top: 1px solid var(--border);
     }
     .chat-input-row input {
       flex: 1;
       padding: 9px 12px;
-      background: var(--bg);
+      background: var(--surface-2);
       border: 1px solid var(--border);
-      border-radius: 7px;
+      border-radius: var(--radius-sm);
       color: var(--text);
       font-size: 13px;
+      font-family: inherit;
       outline: none;
+      transition: border-color 0.15s;
     }
-    .chat-input-row input:focus { border-color: var(--accent); }
+    .chat-input-row input:focus { border-color: var(--border-focus); }
     .chat-input-row input::placeholder { color: var(--muted); }
+
     .btn-send {
       padding: 9px 16px;
-      background: var(--accent);
+      background: var(--ink);
       color: #fff;
       border: none;
-      border-radius: 7px;
+      border-radius: var(--radius-sm);
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
     }
-    .btn-send:hover:not(:disabled) { background: var(--accent-hover); }
-    .btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-send:hover:not(:disabled) { background: var(--ink-hover); }
+    .btn-send:disabled { opacity: 0.35; cursor: not-allowed; }
 
-    .hidden { display: none !important; }
-
-    /* Empty state */
+    /* ── Empty state ────────────────────────────────────────────────── */
     .empty-state {
       text-align: center;
       color: var(--muted);
-      padding: 40px 20px;
+      padding: 36px 20px;
       font-size: 13px;
+      line-height: 1.6;
     }
-    .empty-state .icon { font-size: 36px; margin-bottom: 10px; }
+    .empty-state .icon { font-size: 28px; margin-bottom: 8px; display: block; }
+
+    .hidden { display: none !important; }
+
+    /* ── Analysis box (synthesis, promoted) ─────────────────────────── */
+    .analysis-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .analysis-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+    .analysis-icon {
+      font-size: 14px;
+    }
+    .analysis-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+    .analysis-body {
+      padding: 16px 18px;
+      font-size: 13px;
+      line-height: 1.8;
+      color: var(--text);
+    }
+    .analysis-loading {
+      color: var(--muted);
+      font-style: italic;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .analysis-loading::before {
+      content: "";
+      width: 11px;
+      height: 11px;
+      border: 1.5px solid #ddd;
+      border-top-color: #888;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    /* ── Signals overview ───────────────────────────────────────────── */
+    .overview-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .overview-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.12s;
+    }
+    .overview-row:last-child { border-bottom: none; }
+    .overview-row:hover { background: var(--surface-2); }
+    .overview-source {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      width: 120px;
+      flex-shrink: 0;
+    }
+    .overview-flag { font-size: 15px; line-height: 1; }
+    .overview-flag img { width: 16px; height: 16px; object-fit: contain; border-radius: 2px; }
+    .overview-name { font-size: 12px; font-weight: 600; color: var(--text); }
+    .overview-bar-wrap {
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+      display: flex;
+      gap: 1px;
+      background: var(--surface-2);
+    }
+    .overview-bar-wrap .pos { background: var(--green); }
+    .overview-bar-wrap .neu { background: #d4d4d4; }
+    .overview-bar-wrap .neg { background: var(--red); }
+    .overview-dominant {
+      width: 100px;
+      flex-shrink: 0;
+      text-align: right;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .overview-dominant.pos { color: var(--green); }
+    .overview-dominant.neu { color: var(--text-secondary); }
+    .overview-dominant.neg { color: var(--red); }
+
+    /* ── Divergence callout ─────────────────────────────────────────── */
+    .divergence-callout {
+      margin-top: 8px;
+      padding: 10px 14px;
+      background: #fefce8;
+      border: 1px solid #fde68a;
+      border-radius: var(--radius);
+      font-size: 12px;
+      color: #92400e;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      line-height: 1.5;
+    }
+    .divergence-callout .div-icon { flex-shrink: 0; }
+
+    /* ── Redesigned source cards ────────────────────────────────────── */
+    .card-sentiment-display {
+      margin-bottom: 12px;
+    }
+    .card-sentiment-bar {
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+      display: flex;
+      gap: 1px;
+      margin-bottom: 8px;
+    }
+    .card-sentiment-bar .pos { background: var(--green); }
+    .card-sentiment-bar .neu { background: #d4d4d4; }
+    .card-sentiment-bar .neg { background: var(--red); }
+    .card-sentiment-numbers {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .card-sentiment-numbers .pos { color: var(--green); }
+    .card-sentiment-numbers .neu { color: var(--muted); }
+    .card-sentiment-numbers .neg { color: var(--red); }
+
+    .card-quotes {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .card-quote {
+      font-size: 11px;
+      font-style: italic;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      padding: 7px 10px;
+      background: var(--surface-2);
+      border-radius: 6px;
+      border-left: 2px solid #d0d0d0;
+    }
+
+    .card-posts-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    /* existing .result-items / .result-item stay the same */
   </style>
 </head>
 <body>
-  <div class="app">
+  <canvas id="flickerBg"></canvas>
+
+  <div class="app" id="app">
     <header>
-      <div>
-        <div class="logo">Text<span>pot</span></div>
-        <div class="tagline">Search the world, not just your corner of it.</div>
+      <div class="header-branding">
+        <span class="logo-name">Textpot</span>
+        <div class="header-divider"></div>
+        <span class="tagline">Social media sentiment intelligence.</span>
       </div>
     </header>
 
-    <main id="main">
-      <!-- Search -->
-      <div>
-        <div class="search-row">
+    <div class="page-body">
+      <!-- Hero / prompt area -->
+      <div class="hero" id="hero">
+        <div class="hero-branding" id="heroBranding">
+          <div class="hero-brand-name">Textpot</div>
+          <div class="hero-brand-tagline">Social media sentiment intelligence.</div>
+        </div>
+
+        <div class="prompt-container" id="promptContainer">
           <input
             id="queryInput"
             type="text"
-            placeholder="Search across global platforms…"
+            placeholder="Ask anything across global platforms…"
             autocomplete="off"
           />
-          <button class="btn-search" id="searchBtn">Search</button>
-        </div>
-      </div>
+          <div class="prompt-footer">
+            <button class="btn-sources" id="sourcesToggle">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M1 3h10M3 6h6M5 9h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              <span id="sourcesLabel">Sources</span>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button class="btn-search" id="searchBtn" title="Search">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M8 13V3M8 3L4 7M8 3L12 7" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
 
-      <!-- Source toggles -->
-      <div>
-        <div class="section-label">Sources</div>
-        <div class="source-pills" id="sourcePills"></div>
-      </div>
-
-      <!-- Results -->
-      <div id="resultsSection" class="hidden">
-        <div class="section-label">Results</div>
-        <div class="results-grid" id="resultsGrid"></div>
-      </div>
-
-      <!-- Empty state shown before any search -->
-      <div id="emptyState" class="empty-state">
-        <div class="icon">🌏</div>
-        Select sources above and enter a query to begin.
-      </div>
-
-      <!-- Synthesis -->
-      <div id="synthesisSection" class="hidden">
-        <div class="section-label">Synthesis</div>
-        <div class="synthesis-box" id="synthesisContent"></div>
-      </div>
-
-      <!-- Chat -->
-      <div id="chatSection" class="hidden">
-        <div class="section-label">Follow-up Chat</div>
-        <div class="chat-panel">
-          <div class="chat-messages" id="chatMessages"></div>
-          <div class="chat-input-row">
-            <input
-              id="chatInput"
-              type="text"
-              placeholder="Ask a follow-up question…"
-              autocomplete="off"
-            />
-            <button class="btn-send" id="chatSendBtn">Send</button>
+          <!-- Sources dropdown (hidden by default) -->
+          <div class="sources-dropdown hidden" id="sourcesDropdown">
+            <div class="source-pills" id="sourcePills"></div>
           </div>
         </div>
       </div>
-    </main>
+
+      <!-- Results / chat area -->
+      <main id="main">
+        <!-- Empty state (invisible placeholder to preserve JS refs) -->
+        <div id="emptyState" class="hidden"></div>
+
+        <!-- Analysis (synthesis) — shown first -->
+        <div id="synthesisSection" class="hidden">
+          <div class="analysis-box">
+            <div class="analysis-header">
+              <span class="analysis-icon">✦</span>
+              <span class="analysis-title">Analysis</span>
+            </div>
+            <div class="analysis-body" id="synthesisContent"></div>
+          </div>
+        </div>
+
+        <!-- Signals overview -->
+        <div id="overviewSection" class="hidden">
+          <div class="section-label">Signals Overview</div>
+          <div class="overview-list" id="overviewList"></div>
+          <div id="divergenceCallout" class="divergence-callout hidden"></div>
+        </div>
+
+        <!-- Source cards -->
+        <div id="resultsSection" class="hidden">
+          <div class="section-label">Source Signals</div>
+          <div class="results-grid" id="resultsGrid"></div>
+        </div>
+
+        <!-- Chat -->
+        <div id="chatSection" class="hidden">
+          <div class="section-label">Follow-up Chat</div>
+          <div class="chat-panel">
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-row">
+              <input id="chatInput" type="text" placeholder="Ask a follow-up question…" autocomplete="off" />
+              <button class="btn-send" id="chatSendBtn">Send</button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
   </div>
+
   <script src="dashboard.js"></script>
 </body>
 </html>

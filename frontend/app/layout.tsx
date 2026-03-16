@@ -5,9 +5,9 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Textpot — Search the world, not just your corner of it",
+  title: "Textpot — Social media sentiment intelligence",
   description:
-    "Multilingual research agent that searches Naver, Yahoo Japan, Baidu, and Weibo simultaneously using Gemini AI.",
+    "See what every market thinks. Social media sentiment intelligence across platforms and languages.",
 };
 
 export default function RootLayout({

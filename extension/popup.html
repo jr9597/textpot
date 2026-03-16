@@ -4,45 +4,52 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Textpot</title>
+  <link rel="icon" href="icons/textpot.png" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f0f11;
-      color: #e2e8f0;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: #ffffff;
+      color: #0f0f0f;
       width: 220px;
-      padding: 20px 16px;
+      padding: 18px 16px;
+      -webkit-font-smoothing: antialiased;
     }
+
     .logo {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 700;
-      letter-spacing: -0.5px;
-      margin-bottom: 4px;
+      letter-spacing: -0.3px;
+      margin-bottom: 3px;
     }
-    .logo span { color: #f97316; }
+
     .tagline {
       font-size: 11px;
-      color: #64748b;
-      margin-bottom: 16px;
+      color: #b0b0b0;
+      margin-bottom: 14px;
     }
+
     button {
       width: 100%;
       padding: 9px 12px;
-      background: #f97316;
+      background: #0f0f0f;
       color: #fff;
       border: none;
       border-radius: 8px;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
+      font-family: inherit;
       transition: background 0.15s;
     }
-    button:hover { background: #ea6c00; }
+
+    button:hover { background: #333; }
   </style>
 </head>
 <body>
-  <div class="logo">Text<span>pot</span></div>
-  <div class="tagline">Search the world, not just your corner of it.</div>
+  <div class="logo">Textpot</div>
+  <div class="tagline">Social media sentiment intelligence.</div>
   <button id="openBtn">Open Textpot</button>
   <script src="popup.js"></script>
 </body>

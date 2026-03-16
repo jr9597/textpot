@@ -219,4 +219,17 @@ SOURCES: dict[str, SourceConfig] = {
         locale="en-US",
         accept_language="en-US,en;q=0.9",
     ),
+    "tiktok": SourceConfig(
+        id="tiktok",
+        name="TikTok",
+        flag="🎵",
+        language="English",
+        # TikTok video search — surfaces high-engagement videos with comment sections
+        start_url="https://www.tiktok.com/search?q={query}&t=video",
+        task_template=_TASK_TEMPLATE
+            .replace("{language}", "English")
+            .replace("{platform_type}", "TikTok video"),
+        locale="en-US",
+        accept_language="en-US,en;q=0.9",
+    ),
 }

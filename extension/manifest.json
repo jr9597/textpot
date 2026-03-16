@@ -16,6 +16,7 @@
     "https://twitter.com/*",
     "https://www.youtube.com/*",
     "https://www.instagram.com/*",
+    "https://www.tiktok.com/*",
     "https://*.run.app/*"
   ],
   "background": {
@@ -24,10 +25,10 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "128": "icons/icon128.png"
+      "128": "icons/textpot.png"
     }
   },
   "icons": {
-    "128": "icons/icon128.png"
+    "128": "icons/textpot.png"
   }
 }

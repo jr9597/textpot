@@ -1,201 +1,128 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { createSession, WSSession } from "@/lib/websocket";
-import {
-  ChatMessage,
-  ResultData,
-  SourceResult,
-  SourceStatus,
-  WSMessage,
-} from "@/types";
-
-import SearchBar from "@/components/SearchBar";
-import BrowserLane from "@/components/BrowserLane";
-import SynthesisPanel from "@/components/SynthesisPanel";
-import Dashboard from "@/components/Dashboard";
-import ChatPanel from "@/components/ChatPanel";
-
-type SearchStatus = "idle" | "searching" | "complete";
-
-const ALL_SOURCES = ["naver", "yahoo_japan", "baidu", "dcard", "seznam", "reddit", "threads"];
+import { useEffect, useRef } from "react";
 
 export default function Home() {
-  const [searchStatus, setSearchStatus] = useState<SearchStatus>("idle");
-  const [selectedSources, setSelectedSources] = useState<string[]>(ALL_SOURCES);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Per-source state
-  const [screenshots, setScreenshots] = useState<Record<string, string>>({});
-  const [sourceStatuses, setSourceStatuses] = useState<Record<string, SourceStatus>>({});
-  const [results, setResults] = useState<Record<string, SourceResult>>({});
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-  // Synthesis
-  const [synthesis, setSynthesis] = useState<string>("");
+    const SQUARE = 4;
+    const GAP = 6;
+    const CELL = SQUARE + GAP;
+    const COLOR = "15,15,15";
+    const MAX_OPACITY = 0.12;
+    const FLICKER_CHANCE = 0.06;
 
-  // Chat
-  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([]);
+    let cols: number, rows: number, squares: Float32Array;
+    let rafId: number;
 
-  const sessionRef = useRef<WSSession | null>(null);
-
-  const handleMessage = useCallback((msg: WSMessage) => {
-    switch (msg.type) {
-      case "screenshot":
-        setScreenshots((prev) => ({ ...prev, [msg.source]: msg.image }));
-        break;
-
-      case "status":
-        setSourceStatuses((prev) => ({ ...prev, [msg.source]: msg.status }));
-        break;
-
-      case "results":
-        setResults((prev) => ({
-          ...prev,
-          [msg.source]: {
-            data: msg.data,
-            flag: msg.flag,
-            language: msg.language,
-            name: msg.name,
-          },
-        }));
-        break;
-
-      case "synthesis":
-        setSynthesis(msg.content);
-        break;
-
-      case "complete":
-        setSearchStatus("complete");
-        break;
-
-      case "chat_response":
-        setConversationHistory((prev) => [
-          ...prev,
-          { role: "assistant", content: msg.content },
-        ]);
-        break;
-
-      case "error":
-        console.error("[textpot] backend error:", msg.message);
-        break;
+    function resize() {
+      canvas!.width = window.innerWidth;
+      canvas!.height = window.innerHeight;
+      cols = Math.ceil(canvas!.width / CELL) + 1;
+      rows = Math.ceil(canvas!.height / CELL) + 1;
+      squares = new Float32Array(cols * rows);
+      for (let i = 0; i < squares.length; i++) {
+        squares[i] = Math.random() * MAX_OPACITY;
+      }
     }
+
+    function draw() {
+      ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const idx = r * cols + c;
+          if (Math.random() < FLICKER_CHANCE) {
+            squares[idx] = Math.random() * MAX_OPACITY;
+          }
+          const op = squares[idx];
+          if (op < 0.002) continue;
+          ctx!.fillStyle = `rgba(${COLOR},${op.toFixed(3)})`;
+          ctx!.fillRect(c * CELL, r * CELL, SQUARE, SQUARE);
+        }
+      }
+      rafId = requestAnimationFrame(draw);
+    }
+
+    resize();
+    window.addEventListener("resize", resize);
+    draw();
+
+    return () => {
+      window.removeEventListener("resize", resize);
+      cancelAnimationFrame(rafId);
+    };
   }, []);
 
-  const handleSearch = useCallback(
-    (query: string) => {
-      // Reset all state for a fresh search.
-      setSearchStatus("searching");
-      setScreenshots({});
-      setSourceStatuses({});
-      setResults({});
-      setSynthesis("");
-      setConversationHistory([]);
-
-      // Close any existing session.
-      sessionRef.current?.close();
-
-      try {
-        const session = createSession(handleMessage);
-        sessionRef.current = session;
-
-        session.send({
-          type: "search",
-          query,
-          sources: selectedSources,
-        });
-      } catch (e) {
-        console.error("Failed to open WebSocket:", e);
-        setSearchStatus("idle");
-      }
-    },
-    [selectedSources, handleMessage]
-  );
-
-  const handleChatSend = useCallback(
-    (message: string) => {
-      if (!sessionRef.current) return;
-
-      const userMsg: ChatMessage = { role: "user", content: message };
-      setConversationHistory((prev) => [...prev, userMsg]);
-
-      sessionRef.current.send({
-        type: "chat",
-        message,
-        results,
-        history: conversationHistory,
-      });
-    },
-    [results, conversationHistory]
-  );
-
-  const isSearching = searchStatus === "searching";
-  const hasResults = Object.keys(results).length > 0;
-
   return (
-    <main className="min-h-screen bg-white">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Header */}
-        <header className="flex items-center justify-between mb-10">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-            Textpot
-          </h1>
-          <p className="text-sm text-gray-500 italic">
-            What the world actually thinks
-          </p>
-        </header>
+    <main className="relative min-h-screen w-full overflow-hidden bg-white flex flex-col items-center justify-center">
+      {/* Flickering grid */}
+      <canvas
+        ref={canvasRef}
+        className="fixed inset-0 w-full h-full pointer-events-none"
+        style={{ zIndex: 0 }}
+      />
 
-        {/* Search bar */}
-        <SearchBar
-          onSearch={handleSearch}
-          isSearching={isSearching}
-          selectedSources={selectedSources}
-          onToggleSource={(id) =>
-            setSelectedSources((prev) =>
-              prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
-            )
-          }
-        />
+      {/* Content */}
+      <div className="relative flex flex-col items-center text-center px-6" style={{ zIndex: 1 }}>
+        <h1
+          style={{
+            fontFamily: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+            fontSize: "clamp(52px, 10vw, 100px)",
+            fontWeight: 700,
+            letterSpacing: "-0.03em",
+            lineHeight: 1,
+            color: "#0f0f0f",
+            marginBottom: "14px",
+          }}
+        >
+          Textpot
+        </h1>
 
-        {/* Live browser lanes — visible only while searching */}
-        {isSearching && (
-          <div className="mt-8 flex gap-4 overflow-x-auto pb-2 animate-fade-in">
-            {selectedSources.map((sourceId) => (
-              <BrowserLane
-                key={sourceId}
-                sourceId={sourceId}
-                screenshot={screenshots[sourceId] || null}
-                status={sourceStatuses[sourceId] || "loading"}
-              />
-            ))}
-          </div>
-        )}
+        <p
+          style={{
+            fontFamily: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+            fontSize: "clamp(15px, 2vw, 19px)",
+            color: "#6b6b6b",
+            marginBottom: "52px",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          Social media sentiment intelligence.
+        </p>
 
-        {/* Synthesis panel */}
-        {(synthesis || isSearching) && (
-          <div className="mt-8">
-            <SynthesisPanel
-              synthesis={synthesis}
-              isLoading={isSearching && !synthesis}
-              contributingSources={Object.values(results).map((r) => r.flag)}
-            />
-          </div>
-        )}
-
-        {/* Results dashboard */}
-        {hasResults && (
-          <div className="mt-8">
-            <Dashboard results={results} />
-          </div>
-        )}
-
-        {/* Chat panel — shown only after search completes */}
-        {searchStatus === "complete" && (
-          <div className="mt-8">
-            <ChatPanel
-              history={conversationHistory}
-              onSend={handleChatSend}
-            />
-          </div>
-        )}
+        {/* Coming soon pill */}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "9px",
+            padding: "11px 20px",
+            background: "#ffffff",
+            border: "1.5px solid #e3e3e3",
+            borderRadius: "999px",
+            fontFamily: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+            fontSize: "13px",
+            fontWeight: 500,
+            color: "#6b6b6b",
+            boxShadow: "0 2px 16px rgba(0,0,0,0.06)",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="#0f0f0f" strokeWidth="2"/>
+            <circle cx="12" cy="12" r="4" fill="#0f0f0f"/>
+            <line x1="12" y1="2" x2="12" y2="8" stroke="#0f0f0f" strokeWidth="2" strokeLinecap="round"/>
+            <line x1="20.5" y1="16.5" x2="15.2" y2="13.5" stroke="#0f0f0f" strokeWidth="2" strokeLinecap="round"/>
+            <line x1="3.5" y1="16.5" x2="8.8" y2="13.5" stroke="#0f0f0f" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Chrome extension — coming soon
+        </div>
       </div>
     </main>
   );
