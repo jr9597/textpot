@@ -241,37 +241,87 @@ textpot/
 
 ## Setup
 
-### Chrome Extension
+### Option A — Use the Hosted Backend (Quickest)
+
+The extension is pre-configured to point to a live Cloud Run backend. No server setup needed.
 
 1. Clone the repo
-2. `chrome://extensions` → Enable **Developer Mode** → **Load unpacked** → select `extension/`
-3. Click the Textpot icon in the toolbar → **Open Textpot**
+2. Open `chrome://extensions` in Chrome
+3. Enable **Developer Mode** (top-right toggle)
+4. Click **Load unpacked** → select the `extension/` folder
+5. Click the Textpot icon in the Chrome toolbar → **Open Textpot**
+6. Type a query (e.g. `Tesla`), select 1–3 platforms, and click the send button
 
-The extension points to the hosted Cloud Run backend — no local server needed.
+You should see popup windows open for each selected platform and results stream into the dashboard as each source completes.
 
-### Backend — Local Development
+---
+
+### Option B — Run the Backend Locally
+
+**Prerequisites:** Python 3.11+, a [Gemini API key](https://aistudio.google.com/app/apikey)
 
 ```bash
-cd backend
+# 1. Clone and install
+git clone https://github.com/your-repo/textpot.git
+cd textpot/backend
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-playwright install chromium
 
+# 2. Set your API key
 export GEMINI_API_KEY=your_key_here
+
+# 3. Start the server
 uvicorn main:app --reload --port 8080
 ```
 
-Then update `BACKEND_URL` in `extension/background.js` and `extension/dashboard.js` to `http://localhost:8080`.
+Then point the extension at your local server — open `extension/background.js` and change:
+```javascript
+const BACKEND_URL = "https://textpot-backend-...run.app";
+// to:
+const BACKEND_URL = "http://localhost:8080";
+```
 
-### Deploy Backend to Cloud Run
+Reload the extension in `chrome://extensions` and test as in Option A.
+
+**Verify the backend is running:**
+```bash
+curl http://localhost:8080/health
+# → {"status":"ok"}
+```
+
+---
+
+### Option C — Deploy to Cloud Run
+
+**Prerequisites:** [Google Cloud CLI](https://cloud.google.com/sdk/docs/install), a GCP project with billing enabled
 
 ```bash
-# Store API key in Secret Manager (one-time)
+# One-time: store API key in Secret Manager
 echo -n "your_api_key" | gcloud secrets create GEMINI_API_KEY --data-file=-
 
-# Deploy via Cloud Build
+# Grant Cloud Run access to the secret
+gcloud secrets add-iam-policy-binding GEMINI_API_KEY \
+  --member="serviceAccount:$(gcloud projects describe $(gcloud config get project) \
+    --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+# Build and deploy
 gcloud builds submit --config cloudbuild.yaml
 ```
+
+After deploy, copy the Cloud Run service URL and set it as `BACKEND_URL` in `extension/background.js`.
+
+---
+
+### Reproducing a Test Run
+
+1. Load the extension (Option A, B, or C above)
+2. Open Textpot → type `ChatGPT` as the query
+3. Select **Reddit**, **X**, and **TikTok**
+4. Click send — three popup windows will open and browse in parallel
+5. Within ~2 minutes, all three source cards should populate with sentiment bars and quotes
+6. The AI synthesis section should appear automatically once all sources complete
+7. Try a follow-up in the chat box: `Which platform was most negative and why?`
 
 ---
 
