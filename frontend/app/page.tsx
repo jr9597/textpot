@@ -89,11 +89,26 @@ export default function Home() {
             fontFamily: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
             fontSize: "clamp(15px, 2vw, 19px)",
             color: "#6b6b6b",
-            marginBottom: "52px",
+            marginBottom: "16px",
             letterSpacing: "-0.01em",
           }}
         >
           Social media sentiment intelligence.
+        </p>
+
+        <p
+          style={{
+            fontFamily: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+            fontSize: "clamp(13px, 1.6vw, 16px)",
+            color: "#ababab",
+            marginBottom: "52px",
+            letterSpacing: "-0.01em",
+            maxWidth: "480px",
+          }}
+        >
+          Comment sections are where the real customer data lives.
+          <br />
+          You can now read them all at once.
         </p>
 
         {/* Coming soon pill */}
@@ -112,6 +127,7 @@ export default function Home() {
             color: "#6b6b6b",
             boxShadow: "0 2px 16px rgba(0,0,0,0.06)",
             letterSpacing: "-0.01em",
+            marginBottom: "80px",
           }}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -122,6 +138,28 @@ export default function Home() {
             <line x1="3.5" y1="16.5" x2="8.8" y2="13.5" stroke="#0f0f0f" strokeWidth="2" strokeLinecap="round"/>
           </svg>
           Chrome extension — coming soon
+        </div>
+
+        {/* Demo video */}
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "720px",
+            borderRadius: "12px",
+            overflow: "hidden",
+            boxShadow: "0 4px 40px rgba(0,0,0,0.10)",
+            border: "1px solid #e3e3e3",
+          }}
+        >
+          <iframe
+            width="100%"
+            style={{ aspectRatio: "16/9", display: "block" }}
+            src="https://www.youtube.com/embed/iszlsOHUzAk"
+            title="Textpot demo"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
         </div>
       </div>
     </main>
